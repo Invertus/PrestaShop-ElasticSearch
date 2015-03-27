@@ -1,0 +1,105 @@
+/**
+ * 2015 Invertus, UAB
+ *
+ * NOTICE OF LICENSE
+ *
+ * This file is proprietary and can not be copied and/or distributed
+ * without the express permission of INVERTUS, UAB
+ *
+ *  @author    INVERTUS, UAB www.invertus.eu <help@invertus.eu>
+ *  @copyright 2015 INVERTUS, UAB
+ *  @license   --
+ *  International Registered Trademark & Property of INVERTUS, UAB
+ */
+
+.elasticsearch_search
+{
+	position: relative;
+}
+
+.elasticsearch_search input
+{
+	background: #FBFBFB;
+	height: 45px;
+	margin-right: 1px;
+	padding: 13px 60px 13px 13px;
+	color: #9C9B9B;
+	display: inline;
+    border: 1px solid #D6D4D4;
+}
+
+.elasticsearch_search button:before
+{
+	content: "";
+	display: block;
+	font-family: "FontAwesome";
+	font-size: 17px;
+	text-align: center;
+	width: 100%;
+}
+
+.elasticsearch_search button
+{
+	background: none repeat scroll 0 0 #333333;
+	border: medium none;
+	color: #FFFFFF;
+	display: block;
+	padding: 10px 0 11px;
+	position: absolute;
+	right: 0;
+	text-align: center;
+	top: 0;
+	width: 50px;
+}
+
+.elasticsearch_search button:hover
+{
+    color: #6F6F6F;
+}
+
+.elasticsearch_search .elasticsearch_search_results
+{
+    z-index: 100;
+    position: absolute;
+    display: block;
+    left: 0;
+    top: 44px;
+    width: 100%;
+    border: solid 1px #666666;
+    border-bottom: none;
+    border-top: none;
+    background: #FFFFFF;
+}
+
+.elasticsearch_search .elasticsearch_search_results ul
+{
+    padding: 0;
+    margin: 0;
+    border-top: solid 1px #666666;;
+}
+
+.elasticsearch_search .elasticsearch_search_results ul li
+{
+    border-bottom: solid 1px #666666;
+}
+
+.elasticsearch_search .elasticsearch_search_results ul li a
+{
+    padding: 5px;
+    display: block;
+}
+
+.elasticsearch_search .elasticsearch_search_results ul li:hover
+{
+    font-weight: bold;
+}
+
+.close-elasticsearch-results.close
+{
+    font-family: Arial,Helvetica,sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: inherit;
+    opacity: 1;
+    text-transform: none;
+}
