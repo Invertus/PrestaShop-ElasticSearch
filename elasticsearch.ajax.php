@@ -34,3 +34,16 @@ if (Tools::isSubmit('submitElasticsearchAjaxSearch'))
 
 	die($result);
 }
+
+if (Tools::isSubmit('submitElasticsearchFilter'))
+{
+	$module_instance = Module::getInstanceByName('elasticsearch');
+
+	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchService.php');
+	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
+
+	$filter = new ElasticSearchFilter();
+	$result = $filter->ajaxCall();
+
+	die(Tools::jsonEncode($result));
+}

@@ -103,3 +103,37 @@
     opacity: 1;
     text-transform: none;
 }
+
+
+#elasticsearch_form .elasticsearch_filter ul
+{
+    padding: 5px 0;
+}
+
+#elasticsearch_form .elasticsearch_filter ul li
+{
+    padding: 2px 0;
+}
+
+#elasticsearch_form .elasticsearch_filter ul li .checker
+{
+    height: 15px;
+    width: 15px;
+    cursor: pointer;
+    margin-right: 5px;
+    display: inline;
+}
+
+#elasticsearch_form .elasticsearch_filter ul li label
+{
+    font-weight: normal;
+    cursor: pointer;
+
+}
+
+#elasticsearch_form .elasticsearch_subtitle
+{
+    display: inline-block;
+    font-size: 12px;
+    font-weight: bold;
+}

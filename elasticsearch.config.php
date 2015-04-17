@@ -34,9 +34,6 @@ if (!defined('_ELASTICSEARCH_CSS_URI_'))
 if (!defined('_ELASTICSEARCH_JS_URI_'))
 	define('_ELASTICSEARCH_JS_URI_', _ELASTICSEARCH_URI_.'views/js/');
 
-if (!defined('_ELASTICSEARCH_IMG_URI_'))
-	define('_ELASTICSEARCH_IMG_URI_', _ELASTICSEARCH_URI_.'views/img/');
-
 if (!defined('_ELASTICSEARCH_TEMPLATES_DIR_'))
 	define('_ELASTICSEARCH_TEMPLATES_DIR_', _ELASTICSEARCH_DIR_.'views/templates/');
 

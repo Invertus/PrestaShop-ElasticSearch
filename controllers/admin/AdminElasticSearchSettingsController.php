@@ -41,6 +41,11 @@ class AdminElasticSearchSettingsController extends ModuleAdminController
 			'main_settings' => array(
 				'title' => $this->l('Elastic Search settings'),
 				'fields' => array(
+					'ELASTICSEARCH_SEARCH_DISPLAY' => array(
+						'type' => 'bool',
+						'title' => $this->l('Display search block'),
+						'hint' => $this->l('Search block in page top')
+					),
 					'ELASTICSEARCH_SEARCH' => array(
 						'type' => 'bool',
 						'title' => $this->l('Instant search'),

@@ -11,7 +11,16 @@
 *  @license   --
 *  International Registered Trademark & Property of INVERTUS, UAB
 *}
-<form action="" method="post">
+
+<script type="text/javascript">
+    $(document).ready(function(){
+        $('#elasticsearch_form').submit(function(){
+            $(this).find('input[type=submit]').attr('onclick', 'return false;');
+        });
+    });
+</script>
+
+<form action="" method="post" id="elasticsearch_form">
 	<div class="panel">
 		<h3>
 			<i class="icon icon-cogs"></i>
