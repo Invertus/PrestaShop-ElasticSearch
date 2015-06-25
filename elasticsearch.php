@@ -764,29 +764,29 @@ class ElasticSearch extends Module
 
 	public function hookDisplayLeftColumn()
 	{
-		if (!Configuration::get('ELASTICSEARCH_DISPLAY_FILTER'))
+		try
+		{
+			if (!Configuration::get('ELASTICSEARCH_DISPLAY_FILTER'))
+				return '';
+
+			require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
+
+			$elasticsearch_filter = new ElasticSearchFilter();
+
+			if (!$elasticsearch_filter->generateFiltersBlock($elasticsearch_filter->getSelectedFilters()))
+				return '';
+
+			$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.$this->name.'.css');
+			$this->context->controller->addJS(_ELASTICSEARCH_JS_URI_.'filter.js');
+			$this->context->controller->addJS(_PS_JS_DIR_.'jquery/jquery-ui-1.8.10.custom.min.js');
+			$this->context->controller->addJQueryUI('ui.slider');
+			$this->context->controller->addCSS(_PS_CSS_DIR_.'jquery-ui-1.8.10.custom.css');
+			$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.'filter.css');
+			$this->context->controller->addJQueryPlugin('scrollTo');
+
+			return $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
+		} catch (Exception $e) {
 			return '';
-
-		$search = $this->getElasticSearchServiceObject();
-
-		if (!$search->testElasticSearchServiceConnection())
-			return '';
-
-		require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
-
-		$elasticsearch_filter = new ElasticSearchFilter();
-
-		if (!$elasticsearch_filter->generateFiltersBlock($elasticsearch_filter->getSelectedFilters()))
-			return '';
-
-		$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.$this->name.'.css');
-		$this->context->controller->addJS(_ELASTICSEARCH_JS_URI_.'filter.js');
-		$this->context->controller->addJS(_PS_JS_DIR_.'jquery/jquery-ui-1.8.10.custom.min.js');
-		$this->context->controller->addJQueryUI('ui.slider');
-		$this->context->controller->addCSS(_PS_CSS_DIR_.'jquery-ui-1.8.10.custom.css');
-		$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.'filter.css');
-		$this->context->controller->addJQueryPlugin('scrollTo');
-
-		return $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
+		}
 	}
 }
