@@ -152,7 +152,7 @@ class ElasticSearchService
 			$body['search_keywords_'.$id_lang][] = $category_name;
 
 		foreach (Language::getLanguages() as $lang)
-			$body['search_keywords_'.$lang['id_lang']] = implode(' ', array_filter($body['search_keywords_'.$lang['id_lang']]));
+			$body['search_keywords_'.$lang['id_lang']] = Tools::strtolower(implode(' ', array_filter($body['search_keywords_'.$lang['id_lang']])));
 
 		$body['quantity'] = $product_obj->quantity;
 		$body['price'] = $product_obj->price;
@@ -478,39 +478,41 @@ class ElasticSearchService
 
 	public function search($index, $type, array $query, $pagination = 50, $from = 0, $order_by = null, $order_way = null, $filter = null)
 	{
-		if (!$this->indexExists($index))
-			return array();
-
-		$params = array(
-			'index' => $index,
-			'body' => array()
-		);
-
-		if ($query)
-			$params['body']['query'] = $query;
-
-		if ($type !== null)
-			$params['type'] = $type;
-
-		if ($filter !== null)
-			$params['body']['filter'] = $filter;
-
-		if ($pagination !== null)
-			$params['size'] = $pagination;               // how many results *per shard* you want back
-
-		if ($from !== null)
-			$params['from'] = $from;
-
-		if ($pagination === null && $from === null)
+		try
 		{
-			$params['search_type'] = 'count';
-			return $this->client->search($params)['hits']['total'];
+			$params = array(
+				'index' => $index,
+				'body' => array()
+			);
+
+			if ($query)
+				$params['body']['query'] = $query;
+
+			if ($type !== null)
+				$params['type'] = $type;
+
+			if ($filter !== null)
+				$params['body']['filter'] = $filter;
+
+			if ($pagination !== null)
+				$params['size'] = $pagination;               // how many results *per shard* you want back
+
+			if ($from !== null)
+				$params['from'] = $from;
+
+			if ($pagination === null && $from === null)
+			{
+				$params['search_type'] = 'count';
+				return $this->client->search($params)['hits']['total'];
+			}
+
+			if ($order_by && $order_way)
+				$params['sort'] = array($order_by.':'.$order_way);
+
+			return $this->client->search($params)['hits']['hits'];   // Execute the search
+		} catch (Exception $e) {
+			return array();
 		}
-
-		if ($order_by && $order_way)
-			$params['sort'] = array($order_by.':'.$order_way);
-
-		return $this->client->search($params)['hits']['hits'];   // Execute the search
 	}
 
 	private function createIndexForCurrentShop()
