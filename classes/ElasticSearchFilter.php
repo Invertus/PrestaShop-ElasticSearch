@@ -130,9 +130,9 @@ class ElasticSearchFilter extends ElasticSearchService
 		elseif ($depth = Configuration::get('ELASTICSEARCH_CATEGORY_DEPTH'))
 			$filter_query['and'][1]['range']['level_depth']['lt'] = $parent_category['_source']['level_depth'] + 1 + (int)$depth;
 
-		$n_cat = $this->search($this->index_prefix.$this->context->shop->id, 'categories', array(), null, 0, null, null, $filter_query);
+		$n_cat = $this->getDocumentsCount('categories', array(), $filter_query);
 
-		return $n_cat ? $this->search($this->index_prefix.$this->context->shop->id, 'categories', array(), $n_cat, 0, null, null, $filter_query) : array();
+		return $n_cat ? $this->search('categories', array(), $n_cat, 0, null, null, $filter_query) : array();
 	}
 
 	public function fixFilterQuery(&$filter_query, $operator = 'and')
@@ -189,16 +189,16 @@ class ElasticSearchFilter extends ElasticSearchService
 		$params = $this->getProductsQueryByFilters($selected_filters, $filter_query);
 		$query = $this->buildSearchQuery('bool_must', $params);
 		$this->fixFilterQuery($filter_query);
-		$products = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query, null, 0, null, null, $filter_query);
+		$products = $this->search('products', $query, null, 0, null, null, $filter_query);
 
 		$query_all = $this->buildSearchQuery('bool_must', array(
 			'term' => array(
 				'categories' => Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'))
 			)
 		));
-		$all_products = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query_all, null);
+		$all_products = $this->search('products', $query_all, null);
 
-		$current_category = $this->getById($this->index_prefix.$this->context->shop->id, 'categories', $id_parent);
+		$current_category = $this->getDocumentById('categories', $id_parent);
 		$categories = $this->searchChildCategories($current_category);
 
 		$filter_blocks = array();
@@ -357,14 +357,13 @@ class ElasticSearchFilter extends ElasticSearchService
 					));
 
 					//number of new products
-					$nbr_new = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query_new, null, null, null, null, $filter_query);
+					$nbr_new = $this->search('products', $query_new, null, null, null, null, $filter_query);
 
 					//number of used products
-					$nbr_used = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query_used, null, null, null, null, $filter_query);
+					$nbr_used = $this->search('products', $query_used, null, null, null, null, $filter_query);
 
 					//number of refurbished products
-					$nbr_refurbished = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query_refurbished, null, null, null, null,
-						$filter_query);
+					$nbr_refurbished = $this->search('products', $query_refurbished, null, null, null, null, $filter_query);
 
 					$condition_array = array(
 						'new' => array(
@@ -454,7 +453,7 @@ class ElasticSearchFilter extends ElasticSearchService
 										)
 									)
 								));
-								$nbr = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query, null, null, null, null, $filter_query);
+								$nbr = $this->search('products', $query, null, null, null, null, $filter_query);
 								$manufacturers_nbr[$manufacturer['_source']['id_manufacturer']] = $nbr;
 							}
 
@@ -529,7 +528,6 @@ class ElasticSearchFilter extends ElasticSearchService
 												);
 
 												$nbr = $this->search(
-													$this->index_prefix.$this->context->shop->id,
 													'products',
 													$query,
 													null,
@@ -600,7 +598,7 @@ class ElasticSearchFilter extends ElasticSearchService
 											)
 										);
 
-										$nbr = $this->search($this->index_prefix.$this->context->shop->id, 'products', $query, null, null, null, null, $filter_query);
+										$nbr = $this->search('products', $query, null, null, null, null, $filter_query);
 
 										$feature_value_obj = new FeatureValue($id_feature_value);
 
@@ -647,7 +645,6 @@ class ElasticSearchFilter extends ElasticSearchService
 							$this->changeQueryCategory($category_params, $category['_id']);
 
 							$nbr_products = $this->search(
-								$this->index_prefix.$this->context->shop->id,
 								'products',
 								$this->buildSearchQuery('bool_must', $category_params),
 								null,
@@ -834,7 +831,6 @@ class ElasticSearchFilter extends ElasticSearchService
 
 		if ($count_only)
 			return $this->search(
-				$this->index_prefix.$this->context->shop->id,
 				'products',
 				$query,
 				null,
@@ -867,7 +863,6 @@ class ElasticSearchFilter extends ElasticSearchService
 			$order_by .= '_'.(int)Context::getContext()->language->id;
 
 		$products = $this->search(
-			$this->index_prefix.$this->context->shop->id,
 			'products',
 			$query,
 			$pagination ? $pagination : null,

@@ -22,6 +22,7 @@ if (!defined('_PS_VERSION_'))
 
 require_once('elasticsearch.config.php');
 require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchTemplate.php');
+require_once(_ELASTICSEARCH_CLASSES_DIR_.'SearchService.php');
 
 class ElasticSearch extends Module
 {
@@ -43,6 +44,8 @@ class ElasticSearch extends Module
 		$this->bootstrap = version_compare(_PS_VERSION_, '1.6', '>');
 
 		parent::__construct();
+
+		require_once(_ELASTICSEARCH_CLASSES_DIR_.'SearchService.php');
 
 		$this->displayName = $this->l('BRAD');
 		$this->description = $this->l('Elasticsearch® module for PrestaShop that makes PrestaShop search and filter significantly faster.');
@@ -167,9 +170,9 @@ class ElasticSearch extends Module
 		if (!parent::uninstall() || !$this->uninstallTab(self::SETTINGS_CLASSNAME))
 			return false;
 
-		$search = $this->getElasticSearchServiceObject();
+		$search = $this->getSearchServiceObject();
 
-		if ($search->testElasticSearchServiceConnection())
+		if ($search->testSearchServiceConnection())
 			$search->deleteShopIndex();
 
 		return $this->deleteConfiguration() && $this->dropDatabaseTables();
@@ -503,7 +506,7 @@ class ElasticSearch extends Module
 
 	private function indexProducts($delete_old = true)
 	{
-		$search = $this->getElasticSearchServiceObject();
+		$search = $this->getSearchServiceObject();
 		$search->indexAllProducts($delete_old);
 
 		if (!$search->errors)
@@ -575,9 +578,9 @@ class ElasticSearch extends Module
 
 	private function displayConnectionError()
 	{
-		$search = $this->getElasticSearchServiceObject();
+		$search = $this->getSearchServiceObject();
 
-		if (!$search->testElasticSearchServiceConnection())
+		if (!$search->testSearchServiceConnection())
 			$this->html .= $this->displayError($this->l('Connection to elastic search service is unavailable'));
 	}
 
@@ -615,16 +618,15 @@ class ElasticSearch extends Module
 	private function calculateIndexedProducts()
 	{
 		$indexed_products = 0;
-		$search = $this->getElasticSearchServiceObject();
-		$all_products = count($search->getAllProducts((int)$this->context->shop->id));
+		$all_products = count($this->getAllProducts((int)$this->context->shop->id));
+		$search = $this->getSearchServiceObject();
 
-		if ($search->testElasticSearchServiceConnection())
+		if ($search->testSearchServiceConnection())
 		{
-			$index = $search->index_prefix.(int)$this->context->shop->id;
 			$type = 'products';
 			$property = 'all';
 			$query = $search->buildSearchQuery($property, '');
-			$indexed_products = $search->search($index, $type, $query, null, null, null, null);
+			$indexed_products = $search->getDocumentsCount($type, $query);
 		}
 
 		$this->context->smarty->assign(array(
@@ -638,11 +640,10 @@ class ElasticSearch extends Module
 		$search_term = Tools::getValue('search_query');
 		$type = 'products';
 		$property = 'search_keywords_'.(int)$this->context->language->id;
-		$search = $this->getElasticSearchServiceObject();
+		$search = $this->getSearchServiceObject();
 		$query = $search->buildSearchQuery($property, $search_term);
 		$results_count = (int)Configuration::get('ELASTICSEARCH_SEARCH_COUNT');
-		$index = $search->index_prefix.(int)$this->context->shop->id;
-		$result = $search->search($index, $type, $query, $results_count);
+		$result = $search->search($type, $query, $results_count);
 		$search_result = array();
 
 		if ($result)
@@ -672,28 +673,55 @@ class ElasticSearch extends Module
 		return $this->displayError(implode('<br />', $errors));
 	}
 
-	public function getElasticSearchServiceObject()
+	public function getSearchServiceObject()
 	{
-		require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchService.php');
-
-		return new ElasticSearchService();
+		return SearchService::getInstance(SearchService::ELASTICSEARCH_INSTANCE);
 	}
 
 	private function reindexProduct($id_product)
 	{
-		$search = $this->getElasticSearchServiceObject();
+		try
+		{
+			$search = $this->getSearchServiceObject();
 
-		if (!$search->testElasticSearchServiceConnection())
+			//Deleting the document first
+			$search->deleteDocumentById($this->context->shop->id, $id_product);
+
+			//Generating a new body for deleted document
+			$body = $search->generateSearchBodyByProduct($id_product);
+
+			//creating a document with newly generated body
+			return $search->createDocument($body, (int)$id_product);
+		} catch (Exception $e) {
 			return false;
+		}
+	}
 
-		//Deleting the document first
-		$search->deleteDocumentById($search->index_prefix.$this->context->shop->id, $id_product);
+	public function getAllCategories($id_shop)
+	{
+		$categories = Db::getInstance()->executeS('
+			SELECT cs.`id_category`
+			FROM `'._DB_PREFIX_.'category_shop` cs
+			LEFT JOIN `'._DB_PREFIX_.'category` c
+			ON c.`id_category` = cs.`id_category`
+			WHERE c.`active` = 1
+				AND cs.`id_shop` = "'.(int)$id_shop.'"'
+		);
 
-		//Generating a new body for deleted document
-		$body = $search->generateSearchBodyByProduct($id_product);
+		return $categories ? $categories : array();
+	}
 
-		//creating a document with newly generated body
-		return $search->createDocument($search->index_prefix.$this->context->shop->id, $body, (int)$id_product);
+	public function getAllProducts($id_shop)
+	{
+		$products = Db::getInstance()->executeS('
+			SELECT `id_product`
+			FROM `'._DB_PREFIX_.'product_shop`
+			WHERE `active` = 1
+				AND `id_shop` = "'.(int)$id_shop.'"
+				AND `visibility` IN ("both", "search")'
+		);
+
+		return $products ? $products : array();
 	}
 
 	public function processAjaxSearch()
@@ -712,9 +740,9 @@ class ElasticSearch extends Module
 		if (!Configuration::get('ELASTICSEARCH_SEARCH_DISPLAY'))
 			return '';
 
-		$search = $this->getElasticSearchServiceObject();
+		$search = $this->getSearchServiceObject();
 
-		if (!$search->testElasticSearchServiceConnection())
+		if (!$search->testSearchServiceConnection())
 			return '';
 
 		$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.$this->name.'.css');
@@ -747,16 +775,16 @@ class ElasticSearch extends Module
 	{
 		$product = new Product((int)$params['object']->id, false, null, $this->context->shop->id);
 
-		$search = $this->getElasticSearchServiceObject();
+		$search = $this->getSearchServiceObject();
 
-		if (!$search->testElasticSearchServiceConnection())
+		if (!$search->testSearchServiceConnection())
 			return true;
 
 		if (Validate::isLoadedObject($product))
-			return $search->deleteDocumentById($search->index_prefix.$this->context->shop->id, (int)$params['object']->id);
+			return $search->deleteDocumentById($this->context->shop->id, (int)$params['object']->id);
 
 		foreach (Shop::getShops(false, null, true) as $id_shop)
-			if (!$search->deleteDocumentById($search->index_prefix.$id_shop, (int)$params['object']->id))
+			if (!$search->deleteDocumentById($id_shop, (int)$params['object']->id))
 				return false;
 
 		return true;

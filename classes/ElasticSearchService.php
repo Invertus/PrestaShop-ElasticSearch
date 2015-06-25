@@ -17,20 +17,18 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-class ElasticSearchService
+class ElasticSearchService extends SearchService
 {
+	const INSTANCE_TYPE = self::ELASTICSEARCH_INSTANCE;
 	const FILENAME = 'ElasticSearchService';
 
 	public $module_instance = null;
-	public $errors = array();
-	public $client = null;
-	public $index_prefix = '';
 
 	private $host = null;
 
 	public function __construct($module_name = 'elasticsearch')
 	{
-		$this->initIndexPrefix();
+		$this->initIndex();
 		$this->module_instance = Module::getInstanceByName($module_name);
 		$this->host = Configuration::get('ELASTICSEARCH_HOST');
 
@@ -40,21 +38,24 @@ class ElasticSearchService
 		$this->initClient();
 	}
 
-	private function initIndexPrefix()
+	protected function initIndexPrefix()
 	{
+		if ($this->index_prefix)
+			return;
+
 		if (!($prefix = Configuration::get('ELASTICSEARCH_INDEX_PREFIX')))
 		{
-			$prefix = Tools::strtolower(Tools::passwdGen().'_');
+			$prefix = Tools::passwdGen().'_';
 			Configuration::updateValue('ELASTICSEARCH_INDEX_PREFIX', $prefix);
 		}
 
 		$this->index_prefix = $prefix;
 	}
 
-	public function getById($index, $type, $id)
+	public function getDocumentById($type, $id)
 	{
 		$params = array(
-			'index' => $index,
+			'index' => $this->index,
 			'type' => $type,
 			'id' => $id
 		);
@@ -62,15 +63,13 @@ class ElasticSearchService
 		return $this->client->get($params);
 	}
 
-	private function initClient()
+	protected function initClient()
 	{
 		if (!$this->host)
 		{
 			$this->errors[] = $this->module_instance->l('Service host must be entered in order to use elastic search', self::FILENAME);
 			return false;
 		}
-
-		require_once(_PS_MODULE_DIR_.'elasticsearch/vendor/autoload.php');
 
 		$params = array();
 		$params['hosts'] = array(
@@ -80,7 +79,7 @@ class ElasticSearchService
 		$this->client = new Elasticsearch\Client($params);
 	}
 
-	public function testElasticSearchServiceConnection()
+	public function testSearchServiceConnection()
 	{
 		if (!$this->client || !$this->host)
 			return false;
@@ -183,19 +182,24 @@ class ElasticSearchService
 		return $body;
 	}
 
-	public function createDocument($index, $body, $id = null, $type = 'products')
+	public function createDocument($body, $id = null, $type = 'products')
 	{
-		$this->initClient();
-		$params = array();
+		try
+		{
+			$params = array();
 
-		if ($id)
-			$params['id'] = $id;
+			if ($id)
+				$params['id'] = $id;
 
-		$params['index'] = $index;
-		$params['type'] = $type;
-		$params['body'] = $body;
+			$params['index'] = $this->index;
+			$params['type'] = $type;
+			$params['body'] = $body;
 
-		return $this->client->index($params);
+			return $this->client->index($params);
+		} catch (Exception $e) {
+			self::log('Unable to create document', array_merge(array('Message' => $e->getMessage()), get_defined_vars()));
+			return false;
+		}
 	}
 
 	public static function getProductPricesForIndexing($id_product)
@@ -315,18 +319,17 @@ class ElasticSearchService
 			return false;
 
 		$id_shop = (int)Context::getContext()->shop->id;
-		$shop_products = $this->getAllProducts($id_shop);
+		$shop_products = $this->module_instance->getAllProducts($id_shop);
 
 		if (!$shop_products)
 			return true;
 
 		foreach ($shop_products as $product)
 		{
-			if ($this->documentExists($this->index_prefix.$id_shop, (int)$product['id_product']))
+			if ($this->documentExists($id_shop, (int)$product['id_product']))
 				continue;
 
 			$result = $this->createDocument(
-				$this->index_prefix.$id_shop,
 				$this->generateSearchBodyByProduct((int)$product['id_product']),
 				$product['id_product']
 			);
@@ -342,18 +345,17 @@ class ElasticSearchService
 	public function indexAllCategories()
 	{
 		$id_shop = (int)Context::getContext()->shop->id;
-		$shop_categories = $this->getAllCategories($id_shop);
+		$shop_categories = $this->module_instance->getAllCategories($id_shop);
 
 		if (!$shop_categories)
 			return true;
 
 		foreach ($shop_categories as $category)
 		{
-			if ($this->documentExists($this->index_prefix.$id_shop, (int)$category['id_category'], 'categories'))
+			if ($this->documentExists($id_shop, (int)$category['id_category'], 'categories'))
 				continue;
 
 			$result = $this->createDocument(
-				$this->index_prefix.$id_shop,
 				$this->generateSearchBodyByCategory((int)$category['id_category']),
 				$category['id_category'],
 				'categories'
@@ -364,45 +366,6 @@ class ElasticSearchService
 		}
 
 		return $this->errors ? false : true;
-	}
-
-	public function getAllCategories($id_shop)
-	{
-		$categories = Db::getInstance()->executeS('
-			SELECT cs.`id_category`
-			FROM `'._DB_PREFIX_.'category_shop` cs
-			LEFT JOIN `'._DB_PREFIX_.'category` c
-			ON c.`id_category` = cs.`id_category`
-			WHERE c.`active` = 1
-				AND cs.`id_shop` = "'.(int)$id_shop.'"'
-		);
-
-		return $categories ? $categories : array();
-	}
-
-	public function getAllProducts($id_shop)
-	{
-		$products = Db::getInstance()->executeS('
-			SELECT `id_product`
-			FROM `'._DB_PREFIX_.'product_shop`
-			WHERE `active` = 1
-				AND `id_shop` = "'.(int)$id_shop.'"
-				AND `visibility` IN ("both", "search")'
-		);
-
-		return $products ? $products : array();
-	}
-
-	public function searchByType($type, $index = null)
-	{
-		if ($index === null)
-			$index = $this->index_prefix.Context::getContext()->shop->id;
-
-		$params = array();
-		$params['index'] = $index;
-		$params['type'] = $type;
-
-		return $this->client->search($params);
 	}
 
 	public function buildSearchQuery($type, $term = '')
@@ -450,13 +413,13 @@ class ElasticSearchService
 		}
 	}
 
-	public function deleteDocumentById($index_name, $id, $type = 'products')
+	public function deleteDocumentById($id_shop, $id, $type = 'products')
 	{
-		if (!$this->documentExists($index_name, $id, $type))
+		if (!$this->documentExists($id_shop, $id, $type))
 			return true;
 
 		$params = array(
-			'index' => $index_name,
+			'index' => $this->index_prefix.$id_shop,
 			'type' => $type,
 			'id' => $id
 		);
@@ -464,11 +427,10 @@ class ElasticSearchService
 		return $this->client->delete($params);
 	}
 
-	public function documentExists($index, $id, $type = 'products')
+	public function documentExists($id_shop, $id, $type = 'products')
 	{
-		$this->initClient();
 		$params = array(
-			'index' => $index,
+			'index' => $this->index_prefix.$id_shop,
 			'type' => $type,
 			'id' => $id
 		);
@@ -476,34 +438,34 @@ class ElasticSearchService
 		return (bool)$this->client->exists($params);
 	}
 
-	public function search($index, $type, array $query, $pagination = 50, $from = 0, $order_by = null, $order_way = null, $filter = null)
+	public function search($type, array $query, $pagination = 50, $from = 0, $order_by = null, $order_way = null, $filter = null)
 	{
+		$params = array(
+			'index' => $this->index,
+			'body' => array()
+		);
+
+		if ($query)
+			$params['body']['query'] = $query;
+
+		if ($type !== null)
+			$params['type'] = $type;
+
+		if ($filter !== null)
+			$params['body']['filter'] = $filter;
+
+		if ($pagination !== null)
+			$params['size'] = $pagination;               // how many results *per shard* you want back
+
+		if ($from !== null)
+			$params['from'] = $from;
+
 		try
 		{
-			$params = array(
-				'index' => $index,
-				'body' => array()
-			);
-
-			if ($query)
-				$params['body']['query'] = $query;
-
-			if ($type !== null)
-				$params['type'] = $type;
-
-			if ($filter !== null)
-				$params['body']['filter'] = $filter;
-
-			if ($pagination !== null)
-				$params['size'] = $pagination;               // how many results *per shard* you want back
-
-			if ($from !== null)
-				$params['from'] = $from;
-
 			if ($pagination === null && $from === null)
 			{
 				$params['search_type'] = 'count';
-				return $this->client->search($params)['hits']['total'];
+				return (int)$this->client->search($params)['hits']['total'];
 			}
 
 			if ($order_by && $order_way)
@@ -511,13 +473,19 @@ class ElasticSearchService
 
 			return $this->client->search($params)['hits']['hits'];   // Execute the search
 		} catch (Exception $e) {
+			self::log('Search failed', array('Message' => $e->getMessage(), 'index' => $this->index, 'params' => $params));
 			return array();
 		}
 	}
 
+	public function getDocumentsCount($type, array $query, $filter = null)
+	{
+		return $this->search($type, $query, null, null, null, null, $filter);
+	}
+
 	private function createIndexForCurrentShop()
 	{
-		if (!$this->createIndex($this->index_prefix.(int)Context::getContext()->shop->id))
+		if (!$this->createIndex($this->index))
 		{
 			$this->errors[] = $this->module_instance->l('Unable to create search index', self::FILENAME);
 			return false;
@@ -535,7 +503,7 @@ class ElasticSearchService
 		return $this->client->indices()->exists($params);
 	}
 
-	private function createIndex($index_name)
+	protected function createIndex($index_name)
 	{
 		if ($this->indexExists($index_name))
 			return true;
@@ -563,12 +531,11 @@ class ElasticSearchService
 
 	public function deleteShopIndex()
 	{
-		$this->initClient();
 		$delete_params = array();
 
 		if (Shop::getContext() == Shop::CONTEXT_SHOP)
 		{
-			$index_name = $this->index_prefix.(int)Context::getContext()->shop->id;
+			$index_name = $this->index;
 
 			if (!$this->indexExists($index_name))
 				return true;

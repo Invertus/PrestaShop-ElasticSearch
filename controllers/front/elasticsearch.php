@@ -27,9 +27,9 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
 	{
 		$this->module_instance = Module::getInstanceByName('elasticsearch');
 
-		$search = $this->module_instance->getElasticSearchServiceObject();
+		$search = $this->module_instance->getSearchServiceObject();
 
-		if (!$search->testElasticSearchServiceConnection())
+		if (!$search->testSearchServiceConnection())
 			Controller::getController('PageNotFoundController')->run();
 
 		parent::__construct();
@@ -117,14 +117,13 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
 		$type = 'products';
 		$property = 'search_keywords_'.(int)$this->context->language->id;
 
-		$search = $this->module_instance->getElasticSearchServiceObject();
-		$index = $search->index_prefix.(int)$this->context->shop->id;
+		$search = $this->module_instance->getSearchServiceObject();
 		$query = $search->buildSearchQuery($property, $search_value);
 
 		$from = $no_filter ? null : (int)$this->p - 1;
 		$pagination = $no_filter ? null : (int)$this->n;
 
-		$result = $search->search($index, $type, $query, $pagination, $from, $order_by, $order_way);
+		$result = $search->search($type, $query, $pagination, $from, $order_by, $order_way);
 
 		if ($no_filter)
 			return $result;
