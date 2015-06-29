@@ -22,7 +22,7 @@ if (!defined('_PS_VERSION_'))
 
 require_once('elasticsearch.config.php');
 require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchTemplate.php');
-require_once(_ELASTICSEARCH_CLASSES_DIR_.'SearchService.php');
+require_once(_ELASTICSEARCH_CORE_DIR_.'SearchService.php');
 
 class ElasticSearch extends Module
 {
@@ -44,8 +44,6 @@ class ElasticSearch extends Module
 		$this->bootstrap = version_compare(_PS_VERSION_, '1.6', '>');
 
 		parent::__construct();
-
-		require_once(_ELASTICSEARCH_CLASSES_DIR_.'SearchService.php');
 
 		$this->displayName = $this->l('BRAD');
 		$this->description = $this->l('Elasticsearch® module for PrestaShop that makes PrestaShop search and filter significantly faster.');

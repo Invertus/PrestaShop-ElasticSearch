@@ -19,7 +19,7 @@
 
 class ElasticSearchService extends SearchService
 {
-	const INSTANCE_TYPE = self::ELASTICSEARCH_INSTANCE;
+	const INSTANCE_TYPE = SearchService::ELASTICSEARCH_INSTANCE;
 	const FILENAME = 'ElasticSearchService';
 
 	public $module_instance = null;

@@ -19,6 +19,10 @@ class ElasticSearchFilter extends ElasticSearchService
 
 	private $context = null;
 	private $page = 1;
+	private $all_products;
+	private $filtered_products;
+	private $filtered_products_query_params;
+	private $filter_query;
 
 	public function __construct($module_name = 'elasticsearch')
 	{
@@ -56,9 +60,9 @@ class ElasticSearchFilter extends ElasticSearchService
 	public function getSelectedFilters()
 	{
 		$home_category = Configuration::get('PS_HOME_CATEGORY');
-		$id_parent = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
+		$id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
 
-		if ($id_parent == $home_category)
+		if ($id_category == $home_category)
 			return null;
 
 		/* Analyze all the filters selected by the user and store them into a tab */
@@ -146,6 +150,236 @@ class ElasticSearchFilter extends ElasticSearchService
 			$filter_query = array($operator => $filter_query);
 	}
 
+	public function getPriceFilter($filter)
+	{
+		$currency = $this->context->currency;
+
+		$price_array = array(
+			'type_lite' => 'price',
+			'type' => 'price',
+			'id_key' => 0,
+			'name' => $this->module_instance->l('Price', self::FILENAME),
+			'slider' => true,
+			'max' => '0',
+			'min' => null,
+			'values' => array ('1' => 0),
+			'unit' => $currency->sign,
+			'format' => $currency->format,
+			'filter_show_limit' => $filter['filter_show_limit'],
+			'filter_type' => $filter['filter_type']
+		);
+
+		if ($this->all_products)
+			foreach ($this->all_products as $product)
+			{
+				if (is_null($price_array['min']))
+				{
+					$price_array['min'] = $product['_source']['price_min_'.$currency->id];
+					$price_array['values'][0] = $product['_source']['price_min_'.$currency->id];
+				}
+				else if ($price_array['min'] > $product['_source']['price_min_'.$currency->id])
+				{
+					$price_array['min'] = $product['_source']['price_min_'.$currency->id];
+					$price_array['values'][0] = $product['_source']['price_min_'.$currency->id];
+				}
+
+				if ($price_array['max'] < $product['_source']['price_max_'.$currency->id])
+				{
+					$price_array['max'] = $product['_source']['price_max_'.$currency->id];
+					$price_array['values'][1] = $product['_source']['price_max_'.$currency->id];
+				}
+			}
+
+		if ($price_array['max'] != $price_array['min'] && $price_array['min'] != null)
+		{
+			if ($filter['filter_type'] == 2)
+			{
+				$price_array['list_of_values'] = array();
+				$nbr_of_value = $filter['filter_show_limit'];
+
+				if ($nbr_of_value < 2)
+					$nbr_of_value = 4;
+
+				$delta = ($price_array['max'] - $price_array['min']) / $nbr_of_value;
+
+				for ($i = 0; $i < $nbr_of_value; $i++)
+					$price_array['list_of_values'][] = array(
+						(int)$price_array['min'] + $i * (int)$delta,
+						(int)$price_array['min'] + ($i + 1) * (int)$delta
+					);
+			}
+
+			if (isset($selected_filters['price'][0]) && isset($selected_filters['price'][1]))
+			{
+				$price_array['values'][0] = $selected_filters['price'][0];
+				$price_array['values'][1] = $selected_filters['price'][1];
+			}
+
+			return $price_array;
+		}
+
+		return null;
+	}
+
+	public function getWeightFilter($filter)
+	{
+		$weight_array = array(
+			'type_lite' => 'weight',
+			'type' => 'weight',
+			'id_key' => 0,
+			'name' => $this->module_instance->l('Weight', self::FILENAME),
+			'slider' => true,
+			'max' => '0',
+			'min' => null,
+			'values' => array ('1' => 0),
+			'unit' => Configuration::get('PS_WEIGHT_UNIT'),
+			'format' => 5, // Ex: xxxxx kg
+			'filter_show_limit' => $filter['filter_show_limit'],
+			'filter_type' => $filter['filter_type']
+		);
+
+		if ($this->all_products)
+			foreach ($this->all_products as $product)
+			{
+				if (is_null($weight_array['min']))
+				{
+					$weight_array['min'] = $product['_source']['weight'];
+					$weight_array['values'][0] = $product['_source']['weight'];
+				}
+				else if ($weight_array['min'] > $product['_source']['weight'])
+				{
+					$weight_array['min'] = $product['_source']['weight'];
+					$weight_array['values'][0] = $product['_source']['weight'];
+				}
+
+				if ($weight_array['max'] < $product['_source']['weight'])
+				{
+					$weight_array['max'] = $product['_source']['weight'];
+					$weight_array['values'][1] = $product['_source']['weight'];
+				}
+			}
+
+		if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] != null)
+		{
+			if (isset($selected_filters['weight']) && isset($selected_filters['weight'][0])
+				&& isset($selected_filters['weight'][1]))
+			{
+				$weight_array['values'][0] = $selected_filters['weight'][0];
+				$weight_array['values'][1] = $selected_filters['weight'][1];
+			}
+			return $weight_array;
+		}
+
+		return null;
+	}
+
+	public function getConditionFilter($filter, $params, $filter_query, $selected_filters)
+	{
+		$query_new = $this->buildSearchQuery('bool_must', array_merge(
+			$params,
+			array(
+				array(
+					'term' => array(
+						'condition' => 'new'
+					)
+				)
+			)
+		));
+
+		$query_used = $this->buildSearchQuery('bool_must', array_merge(
+			$params,
+			array(
+				array(
+					'term' => array(
+						'condition' => 'used'
+					)
+				)
+			)
+		));
+
+		$query_refurbished = $this->buildSearchQuery('bool_must', array_merge(
+			$params,
+			array(
+				array(
+					'term' => array(
+						'condition' => 'refurbished'
+					)
+				)
+			)
+		));
+
+		//number of new products
+		$nbr_new = $this->search('products', $query_new, null, null, null, null, $filter_query);
+
+		//number of used products
+		$nbr_used = $this->search('products', $query_used, null, null, null, null, $filter_query);
+
+		//number of refurbished products
+		$nbr_refurbished = $this->search('products', $query_refurbished, null, null, null, null, $filter_query);
+
+		$condition_array = array(
+			'new' => array(
+				'name' => $this->module_instance->l('New', self::FILENAME),
+				'nbr' => $nbr_new
+			),
+			'used' => array(
+				'name' => $this->module_instance->l('Used', self::FILENAME),
+				'nbr' => $nbr_used
+			),
+			'refurbished' => array(
+				'name' => $this->module_instance->l('Refurbished', self::FILENAME),
+				'nbr' => $nbr_refurbished
+			)
+		);
+
+		if ($this->filtered_products)
+			foreach ($this->filtered_products as $product)
+				if (isset($selected_filters['condition']) && in_array($product['_source']['condition'], $selected_filters['condition']))
+					$condition_array[$product['_source']['condition']]['checked'] = true;
+
+		foreach (array_keys($condition_array) as $key)
+			if (isset($selected_filters['condition']) && in_array($key, $selected_filters['condition']))
+				$condition_array[$key]['checked'] = true;
+
+		if ($nbr_new || $nbr_used || $nbr_refurbished || !Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'))
+			return array(
+				'type_lite' => 'condition',
+				'type' => 'condition',
+				'id_key' => 0,
+				'name' => $this->module_instance->l('Condition', self::FILENAME),
+				'values' => $condition_array,
+				'filter_show_limit' => $filter['filter_show_limit'],
+				'filter_type' => $filter['filter_type']
+			);
+
+		return null;
+	}
+
+	public function initAllProducts()
+	{
+		if ($this->all_products === null)
+		{
+			$query_all = $this->buildSearchQuery('bool_must', array(
+				'term' => array(
+					'categories' => Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'))
+				)
+			));
+
+			$this->all_products = $this->search('products', $query_all, null);
+		}
+	}
+
+	public function initFilteredProducts($selected_filters)
+	{
+		if ($this->filtered_products === null)
+		{
+			$this->filtered_products_query_params = $this->getProductsQueryByFilters($selected_filters, $this->filter_query);
+			$query = $this->buildSearchQuery('bool_must', $this->filtered_products_query_params);
+			$this->fixFilterQuery($this->filter_query);
+			$this->filtered_products = $this->search('products', $query, null, 0, null, null, $this->filter_query);
+		}
+	}
+
 	public function getFilterBlock($selected_filters = array())
 	{
 		static $cache = null;
@@ -153,23 +387,13 @@ class ElasticSearchFilter extends ElasticSearchService
 		if (is_array($cache))
 			return $cache;
 
-		$currency = $this->context->currency;
-		$id_shop = (int)$this->context->shop->id;
 		$home_category = Configuration::get('PS_HOME_CATEGORY');
-		$id_parent = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
+		$id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
 
-		if ($id_parent == $home_category)
+		if ($id_category == $home_category)
 			return null;
 
-		/* Get the filters for the current category */
-		$filters = Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS('
-			SELECT `id_elasticsearch_category`, `id_shop`, `id_category`, `id_value`, `type`, `position`, `filter_type`, `filter_show_limit`, `date_add`
-			FROM '._DB_PREFIX_.'elasticsearch_category
-			WHERE `id_category` = "'.(int)$id_parent.'"
-				AND `id_shop` = "'.(int)$id_shop.'"
-			GROUP BY `type`, `id_value`
-			ORDER BY `position` ASC
-		');
+		$filters = $this->getFiltersFromDb($id_category);
 
 		// Remove all empty selected filters
 		foreach ($selected_filters as $key => $value)
@@ -186,19 +410,10 @@ class ElasticSearchFilter extends ElasticSearchService
 					break;
 			}
 
-		$params = $this->getProductsQueryByFilters($selected_filters, $filter_query);
-		$query = $this->buildSearchQuery('bool_must', $params);
-		$this->fixFilterQuery($filter_query);
-		$products = $this->search('products', $query, null, 0, null, null, $filter_query);
+		$this->initFilteredProducts($selected_filters);
+		$this->initAllProducts();
 
-		$query_all = $this->buildSearchQuery('bool_must', array(
-			'term' => array(
-				'categories' => Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'))
-			)
-		));
-		$all_products = $this->search('products', $query_all, null);
-
-		$current_category = $this->getDocumentById('categories', $id_parent);
+		$current_category = $this->getDocumentById('categories', $id_category);
 		$categories = $this->searchChildCategories($current_category);
 
 		$filter_blocks = array();
@@ -209,196 +424,23 @@ class ElasticSearchFilter extends ElasticSearchService
 				case 'price':
 					if ($this->showPriceFilter())
 					{
-						$price_array = array(
-							'type_lite' => 'price',
-							'type' => 'price',
-							'id_key' => 0,
-							'name' => $this->module_instance->l('Price', self::FILENAME),
-							'slider' => true,
-							'max' => '0',
-							'min' => null,
-							'values' => array ('1' => 0),
-							'unit' => $currency->sign,
-							'format' => $currency->format,
-							'filter_show_limit' => $filter['filter_show_limit'],
-							'filter_type' => $filter['filter_type']
-						);
+						$price_filter = $this->getPriceFilter($filter);
 
-						if ($all_products)
-							foreach ($all_products as $product)
-							{
-								if (is_null($price_array['min']))
-								{
-									$price_array['min'] = $product['_source']['price_min_'.$currency->id];
-									$price_array['values'][0] = $product['_source']['price_min_'.$currency->id];
-								}
-								else if ($price_array['min'] > $product['_source']['price_min_'.$currency->id])
-								{
-									$price_array['min'] = $product['_source']['price_min_'.$currency->id];
-									$price_array['values'][0] = $product['_source']['price_min_'.$currency->id];
-								}
-
-								if ($price_array['max'] < $product['_source']['price_max_'.$currency->id])
-								{
-									$price_array['max'] = $product['_source']['price_max_'.$currency->id];
-									$price_array['values'][1] = $product['_source']['price_max_'.$currency->id];
-								}
-							}
-
-						if ($price_array['max'] != $price_array['min'] && $price_array['min'] != null)
-						{
-							if ($filter['filter_type'] == 2)
-							{
-								$price_array['list_of_values'] = array();
-								$nbr_of_value = $filter['filter_show_limit'];
-
-								if ($nbr_of_value < 2)
-									$nbr_of_value = 4;
-
-								$delta = ($price_array['max'] - $price_array['min']) / $nbr_of_value;
-
-								for ($i = 0; $i < $nbr_of_value; $i++)
-									$price_array['list_of_values'][] = array(
-										(int)$price_array['min'] + $i * (int)$delta,
-										(int)$price_array['min'] + ($i + 1) * (int)$delta
-									);
-							}
-
-							if (isset($selected_filters['price'][0]) && isset($selected_filters['price'][1]))
-							{
-								$price_array['values'][0] = $selected_filters['price'][0];
-								$price_array['values'][1] = $selected_filters['price'][1];
-							}
-
-							$filter_blocks[] = $price_array;
-						}
+						if ($price_filter)
+							$filter_blocks[] = $price_filter;
 					}
 					break;
 				case 'weight':
-					$weight_array = array(
-						'type_lite' => 'weight',
-						'type' => 'weight',
-						'id_key' => 0,
-						'name' => $this->module_instance->l('Weight', self::FILENAME),
-						'slider' => true,
-						'max' => '0',
-						'min' => null,
-						'values' => array ('1' => 0),
-						'unit' => Configuration::get('PS_WEIGHT_UNIT'),
-						'format' => 5, // Ex: xxxxx kg
-						'filter_show_limit' => $filter['filter_show_limit'],
-						'filter_type' => $filter['filter_type']
-					);
+					$weight_filter = $this->getWeightFilter($filter);
 
-					if ($all_products)
-						foreach ($all_products as $product)
-						{
-							if (is_null($weight_array['min']))
-							{
-								$weight_array['min'] = $product['_source']['weight'];
-								$weight_array['values'][0] = $product['_source']['weight'];
-							}
-							else if ($weight_array['min'] > $product['_source']['weight'])
-							{
-								$weight_array['min'] = $product['_source']['weight'];
-								$weight_array['values'][0] = $product['_source']['weight'];
-							}
-
-							if ($weight_array['max'] < $product['_source']['weight'])
-							{
-								$weight_array['max'] = $product['_source']['weight'];
-								$weight_array['values'][1] = $product['_source']['weight'];
-							}
-						}
-
-					if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] != null)
-					{
-						if (isset($selected_filters['weight']) && isset($selected_filters['weight'][0])
-							&& isset($selected_filters['weight'][1]))
-						{
-							$weight_array['values'][0] = $selected_filters['weight'][0];
-							$weight_array['values'][1] = $selected_filters['weight'][1];
-						}
-						$filter_blocks[] = $weight_array;
-					}
+					if ($weight_filter)
+						$filter_blocks[] = $weight_filter;
 					break;
 				case 'condition':
-					$query_new = $this->buildSearchQuery('bool_must', array_merge(
-						$params,
-						array(
-							array(
-								'term' => array(
-									'condition' => 'new'
-								)
-							)
-						)
-					));
+					$condition_filter = $this->getConditionFilter($filter, $this->filtered_products_query_params, $this->filter_query, $selected_filters);
 
-					$query_used = $this->buildSearchQuery('bool_must', array_merge(
-						$params,
-						array(
-							array(
-								'term' => array(
-									'condition' => 'used'
-								)
-							)
-						)
-					));
-
-					$query_refurbished = $this->buildSearchQuery('bool_must', array_merge(
-						$params,
-						array(
-							array(
-								'term' => array(
-									'condition' => 'refurbished'
-								)
-							)
-						)
-					));
-
-					//number of new products
-					$nbr_new = $this->search('products', $query_new, null, null, null, null, $filter_query);
-
-					//number of used products
-					$nbr_used = $this->search('products', $query_used, null, null, null, null, $filter_query);
-
-					//number of refurbished products
-					$nbr_refurbished = $this->search('products', $query_refurbished, null, null, null, null, $filter_query);
-
-					$condition_array = array(
-						'new' => array(
-							'name' => $this->module_instance->l('New', self::FILENAME),
-							'nbr' => $nbr_new
-						),
-						'used' => array(
-							'name' => $this->module_instance->l('Used', self::FILENAME),
-							'nbr' => $nbr_used
-						),
-						'refurbished' => array(
-							'name' => $this->module_instance->l('Refurbished', self::FILENAME),
-							'nbr' => $nbr_refurbished
-						)
-					);
-
-					if ($products)
-						foreach ($products as $product)
-							if (isset($selected_filters['condition']) && in_array($product['_source']['condition'], $selected_filters['condition']))
-								$condition_array[$product['_source']['condition']]['checked'] = true;
-
-					foreach (array_keys($condition_array) as $key)
-						if (isset($selected_filters['condition']) && in_array($key, $selected_filters['condition']))
-							$condition_array[$key]['checked'] = true;
-
-					if ($nbr_new || $nbr_used || $nbr_refurbished || !Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'))
-						$filter_blocks[] = array(
-							'type_lite' => 'condition',
-							'type' => 'condition',
-							'id_key' => 0,
-							'name' => $this->module_instance->l('Condition', self::FILENAME),
-							'values' => $condition_array,
-							'filter_show_limit' => $filter['filter_show_limit'],
-							'filter_type' => $filter['filter_type']
-						);
+					if ($condition_filter)
+						$filter_blocks[] = $condition_filter;
 					break;
 
 				case 'quantity':
@@ -411,8 +453,8 @@ class ElasticSearchFilter extends ElasticSearchService
 						if (isset($selected_filters['quantity']) && in_array($key, $selected_filters['quantity']))
 							$quantity_array[$key]['checked'] = true;
 
-					if ($products)
-						foreach ($products as $product)
+					if ($this->filtered_products)
+						foreach ($this->filtered_products as $product)
 						{
 							//If oosp move all not available quantity to available quantity
 							if ((int)$product['_source']['quantity'] > 0 || Product::isAvailableWhenOutOfStock(StockAvailable::outOfStock($product['_id'])))
@@ -435,16 +477,16 @@ class ElasticSearchFilter extends ElasticSearchService
 					break;
 
 				case 'manufacturer':
-					if ($products)
+					if ($this->filtered_products)
 					{
 						$manufacturers_array = array();
 						$manufacturers_nbr = array();
-						foreach ($products as $manufacturer)
+						foreach ($this->filtered_products as $manufacturer)
 						{
 							if (!isset($manufacturers_nbr[$manufacturer['_source']['id_manufacturer']]))
 							{
 								$query = $this->buildSearchQuery('bool_must', array_merge(
-									$params,
+									$this->filtered_products_query_params,
 									array(
 										array(
 											'term' => array(
@@ -453,7 +495,7 @@ class ElasticSearchFilter extends ElasticSearchService
 										)
 									)
 								));
-								$nbr = $this->search('products', $query, null, null, null, null, $filter_query);
+								$nbr = $this->search('products', $query, null, null, null, null, $this->filter_query);
 								$manufacturers_nbr[$manufacturer['_source']['id_manufacturer']] = $nbr;
 							}
 
@@ -480,9 +522,9 @@ class ElasticSearchFilter extends ElasticSearchService
 
 				case 'id_attribute_group':
 					$attributes_array = array();
-					if ($products)
+					if ($this->filtered_products)
 					{
-						foreach ($products as $product)
+						foreach ($this->filtered_products as $product)
 						{
 							foreach ($product['_source'] as $attribute_group => $attributes)
 							{
@@ -516,7 +558,7 @@ class ElasticSearchFilter extends ElasticSearchService
 											{
 												$query = $this->buildSearchQuery(
 													'bool_must', array_merge(
-														$params,
+														$this->filtered_products_query_params,
 														array(
 															array(
 																'term' => array(
@@ -534,7 +576,7 @@ class ElasticSearchFilter extends ElasticSearchService
 													null,
 													null,
 													null,
-													$filter_query
+													$this->filter_query
 												);
 
 												$attributes_array[$id_attribute_group]['values'][$id_attribute] = array(
@@ -556,9 +598,9 @@ class ElasticSearchFilter extends ElasticSearchService
 					break;
 				case 'id_feature':
 					$feature_array = array();
-					if ($products)
+					if ($this->filtered_products)
 					{
-						foreach ($products as $product)
+						foreach ($this->filtered_products as $product)
 						{
 							foreach ($product['_source'] as $feature => $id_feature_value)
 							{
@@ -587,7 +629,7 @@ class ElasticSearchFilter extends ElasticSearchService
 										$query = $this->buildSearchQuery(
 											'bool_must',
 											array_merge(
-												$params,
+												$this->filtered_products_query_params,
 												array(
 													array(
 														'term' => array(
@@ -598,7 +640,7 @@ class ElasticSearchFilter extends ElasticSearchService
 											)
 										);
 
-										$nbr = $this->search('products', $query, null, null, null, null, $filter_query);
+										$nbr = $this->search('products', $query, null, null, null, null, $this->filter_query);
 
 										$feature_value_obj = new FeatureValue($id_feature_value);
 
@@ -636,12 +678,12 @@ class ElasticSearchFilter extends ElasticSearchService
 
 				case 'category':
 					$tmp_array = array();
-					if ($products)
+					if ($this->filtered_products)
 					{
 						$categories_with_products_count = 0;
 						foreach ($categories as $category)
 						{
-							$category_params = $params;
+							$category_params = $this->filtered_products_query_params;
 							$this->changeQueryCategory($category_params, $category['_id']);
 
 							$nbr_products = $this->search(
@@ -712,7 +754,7 @@ class ElasticSearchFilter extends ElasticSearchService
 
 		$cache = array(
 			'elasticsearch_show_qties' => (int)Configuration::get('ELASTICSEARCH_SHOW_QTIES'),
-			'id_elasticsearch_category' => (int)$id_parent,
+			'id_elasticsearch_category' => (int)$id_category,
 			'selected_filters' => $selected_filters,
 			'n_filters' => (int)$n_filters,
 			'nbr_filterBlocks' => count($filter_blocks),
@@ -725,6 +767,29 @@ class ElasticSearchFilter extends ElasticSearchService
 		);
 
 		return $cache;
+	}
+
+	/**
+	 * Returns filters for category
+	 * @return array - filters data
+	 * @throws PrestaShopDatabaseException
+	 */
+	public function getFiltersFromDb($id_category)
+	{
+		try
+		{
+			return Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS('
+			SELECT `id_elasticsearch_category`, `id_shop`, `id_category`, `id_value`, `type`, `position`, `filter_type`, `filter_show_limit`, `date_add`
+			FROM '._DB_PREFIX_.'elasticsearch_category
+			WHERE `id_category` = "'.(int)$id_category.'"
+				AND `id_shop` = "'.(int)$this->context->shop->id.'"
+			GROUP BY `type`, `id_value`
+			ORDER BY `position` ASC
+		');
+		} catch (Exception $e) {
+			self::log('Unable to get filters from database', array('id_category' => $id_category));
+			return array();
+		}
 	}
 
 	public function ajaxCall()
@@ -896,9 +961,9 @@ class ElasticSearchFilter extends ElasticSearchService
 	public function getProductsQueryByFilters($selected_filters, &$filter_query = null)
 	{
 		$home_category = Configuration::get('PS_HOME_CATEGORY');
-		$id_parent = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
+		$id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
 
-		if ($id_parent == $home_category)
+		if ($id_category == $home_category)
 			return false;
 
 		$query = array();
