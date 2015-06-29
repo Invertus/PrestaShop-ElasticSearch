@@ -92,60 +92,89 @@ class ElasticSearchService extends SearchService
 		return isset($response->status) && $response->status = '200';
 	}
 
-	private function generateFilterBodyByProduct($id_product)
+	/**
+	 * @param $product - product object or id_product
+	 * @return array
+	 */
+	private function generateFilterBodyByProduct($product)
 	{
-		$product_obj = new Product($id_product, true);
-		$attributes = Product::getAttributesInformationsByProduct($id_product);
-		$features = $product_obj->getFeatures();
+		if (!is_object($product))
+			$product = new Product($product, true);
+
+		$attributes = Product::getAttributesInformationsByProduct($product->id);
+		$features = $product->getFeatures();
 
 		$body = array();
-		$body['categories'] = $product_obj->getCategories();
-		$body['condition'] = $product_obj->condition;
-		$body['id_manufacturer'] = $product_obj->id_manufacturer;
-		$body['manufacturer_name'] = $product_obj->manufacturer_name;
-		$body['weight'] = $product_obj->weight;
-		$body['out_of_stock'] = $product_obj->out_of_stock;
-		$body['id_category_default'] = $product_obj->id_category_default;
-		$body['ean13'] = $product_obj->ean13;
-		$body['available_for_order'] = $product_obj->available_for_order;
-		$body['customizable'] = $product_obj->customizable;
-		$body['minimal_quantity'] = $product_obj->minimal_quantity;
-		$body['show_price'] = $product_obj->show_price;
+		$body['categories'] = $product->getCategories();
+		$body['condition'] = $product->condition;
+		$body['id_manufacturer'] = $product->id_manufacturer;
+		$body['manufacturer_name'] = $product->manufacturer_name;
+		$body['weight'] = $product->weight;
+		$body['out_of_stock'] = $product->out_of_stock;
+		$body['id_category_default'] = $product->id_category_default;
+		$body['ean13'] = $product->ean13;
+		$body['available_for_order'] = $product->available_for_order;
+		$body['customizable'] = $product->customizable;
+		$body['minimal_quantity'] = $product->minimal_quantity;
+		$body['show_price'] = $product->show_price;
 
-		$cover = Product::getCover($product_obj->id);
+		$cover = Product::getCover($product->id);
 		$body['id_image'] = isset($cover['id_image']) ? $cover['id_image'] : $cover;
 
 		if ($attributes)
 			foreach ($attributes as $attribute)
+			{
+				$attribute_obj = new Attribute($attribute['id_attribute']);
+
+				foreach ($attribute_obj->name as $id_lang => $name)
+					$body['lang_attribute_'.$attribute['id_attribute'].'_'.$id_lang] = $name;
+
 				$body['attribute_group_'.$attribute['id_attribute_group']][] = $attribute['id_attribute'];
+			}
 
 		if ($features)
 			foreach ($features as $feature)
-				$body['feature_'.$feature['id_feature']] = $feature['id_feature_value'];
+			{
+				$feature_obj = new Feature($feature['id_feature']);
+				$feature_value_obj = new FeatureValue($feature['id_feature_value']);
 
-		return array_merge($body, $this->getProductPricesForIndexing($product_obj->id));
+				foreach ($feature_obj->name as $id_lang => $name)
+				{
+					$body['lang_feature_'.$feature['id_feature'].'_'.$id_lang] = $name;
+					$body['lang_feature_value_'.$feature['id_feature_value'].'_'.$id_lang] = $feature_value_obj->value[$id_lang];
+				}
+
+				$body['feature_'.$feature['id_feature']] = $feature['id_feature_value'];
+			}
+
+		return array_merge($body, $this->getProductPricesForIndexing($product->id));
 	}
 
-	private function generateSearchKeywordsBodyByProduct($id_product)
+	/**
+	 * @param $product - product object or id_product
+	 * @return array
+	 */
+	private function generateSearchKeywordsBodyByProduct($product)
 	{
-		$product_obj = new Product($id_product, true);
+		if (!is_object($product))
+			$product = new Product($product, true);
 
 		$body = array();
-		$body['reference'] = $product_obj->reference;
+		$body['reference'] = $product->reference;
 
-		foreach ($product_obj->name as $id_lang => $name)
+		foreach ($product->name as $id_lang => $name)
 		{
 			$body['name_'.$id_lang] = $name;
-			$body['link_rewrite_'.$id_lang] = $product_obj->link_rewrite[$id_lang];
-			$body['description_short_'.$id_lang] = $product_obj->description_short[$id_lang];
-			$body['search_keywords_'.$id_lang][] = $product_obj->reference;
+			$body['link_rewrite_'.$id_lang] = $product->link_rewrite[$id_lang];
+			$body['description_short_'.$id_lang] = $product->description_short[$id_lang];
+			$body['search_keywords_'.$id_lang][] = $product->reference;
 			$body['search_keywords_'.$id_lang][] = $name;
-			$body['search_keywords_'.$id_lang][] = strip_tags($product_obj->description[$id_lang]);
-			$body['search_keywords_'.$id_lang][] = strip_tags($product_obj->description_short[$id_lang]);
-			$body['search_keywords_'.$id_lang][] = $product_obj->manufacturer_name;
+			$body['search_keywords_'.$id_lang][] = strip_tags($product->description[$id_lang]);
+			$body['search_keywords_'.$id_lang][] = strip_tags($product->description_short[$id_lang]);
+			$body['search_keywords_'.$id_lang][] = $product->manufacturer_name;
 		}
 
-		$category = new Category($product_obj->id_category_default);
+		$category = new Category($product->id_category_default);
 
 		foreach ($category->name as $id_lang => $category_name)
 			$body['search_keywords_'.$id_lang][] = $category_name;
@@ -153,15 +182,19 @@ class ElasticSearchService extends SearchService
 		foreach (Language::getLanguages() as $lang)
 			$body['search_keywords_'.$lang['id_lang']] = Tools::strtolower(implode(' ', array_filter($body['search_keywords_'.$lang['id_lang']])));
 
-		$body['quantity'] = $product_obj->quantity;
-		$body['price'] = $product_obj->price;
+		$body['quantity'] = $product->quantity;
+		$body['price'] = $product->price;
 
 		return $body;
 	}
 
-	public function generateSearchBodyByProduct($id_product)
+	/**
+	 * @param $product - product object or id_product
+	 * @return array
+	 */
+	public function generateSearchBodyByProduct($product)
 	{
-		return array_merge($this->generateSearchKeywordsBodyByProduct($id_product), $this->generateFilterBodyByProduct($id_product));
+		return array_merge($this->generateSearchKeywordsBodyByProduct($product), $this->generateFilterBodyByProduct($product));
 	}
 
 	public function generateSearchBodyByCategory($id_category)
@@ -312,34 +345,40 @@ class ElasticSearchService extends SearchService
 
 	public function indexAllProducts($delete_old = true)
 	{
-		if ($delete_old)
-			$this->deleteShopIndex();
-
-		if (!$this->createIndexForCurrentShop())
-			return false;
-
-		$id_shop = (int)Context::getContext()->shop->id;
-		$shop_products = $this->module_instance->getAllProducts($id_shop);
-
-		if (!$shop_products)
-			return true;
-
-		foreach ($shop_products as $product)
+		try
 		{
-			if ($this->documentExists($id_shop, (int)$product['id_product']))
-				continue;
+			if ($delete_old)
+				$this->deleteShopIndex();
 
-			$result = $this->createDocument(
-				$this->generateSearchBodyByProduct((int)$product['id_product']),
-				$product['id_product']
-			);
+			if (!$this->createIndexForCurrentShop())
+				return false;
 
-			if (!isset($result['created']) || $result['created'] !== true)
-				$this->errors[] = sprintf($this->module_instance->l('Unable to index product #%d'), $product['id_product']);
+			$id_shop = (int)Context::getContext()->shop->id;
+			$shop_products = $this->module_instance->getAllProducts($id_shop);
+
+			if (!$shop_products)
+				return true;
+
+			foreach ($shop_products as $product)
+			{
+				if ($this->documentExists($id_shop, (int)$product['id_product']))
+					continue;
+
+				$result = $this->createDocument(
+					$this->generateSearchBodyByProduct(new Product($product['id_product'], true)),
+					$product['id_product']
+				);
+
+				if (!isset($result['created']) || $result['created'] !== true)
+					$this->errors[] = sprintf($this->module_instance->l('Unable to index product #%d'), $product['id_product']);
+			}
+
+			//indexing categories if products indexing succeeded
+			return $this->errors ? false : $this->indexAllCategories();
+		} catch (Exception $e) {
+			self::log('Unable to index all products. Message: '.$e->getMessage());
+			return false;
 		}
-
-		//indexing categories if products indexing succeeded
-		return $this->errors ? false : $this->indexAllCategories();
 	}
 
 	public function indexAllCategories()
@@ -519,6 +558,15 @@ class ElasticSearchService extends SearchService
 		$index_params['body']['mappings']['products']['properties']['weight'] = array(
 			'type' => 'double'
 		);
+
+		foreach (Language::getLanguages(false) as $lang)
+		{
+			$index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']] = array(
+				'type' => 'string',
+				'index' => 'not_analyzed'
+			);
+		}
+
 		$index_params['body']['mappings']['categories']['properties']['nleft'] = array(
 			'type' => 'long'
 		);

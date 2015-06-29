@@ -96,6 +96,11 @@ abstract class SearchService
 		return self::$instance[$type];
 	}
 
+	/**
+	 * Returns class name of search service if it exists
+	 * @param int $type Instance type
+	 * @return bool|string class name or false
+	 */
 	public static function getClass($type)
 	{
 		switch ($type)

@@ -618,7 +618,7 @@ class ElasticSearch extends Module
 	private function calculateIndexedProducts()
 	{
 		$indexed_products = 0;
-		$all_products = count($this->getAllProducts((int)$this->context->shop->id));
+		$all_products = $this->getProductsCount($this->context->shop->id);
 		$search = $this->getSearchServiceObject();
 
 		if ($search->testSearchServiceConnection())
@@ -722,6 +722,17 @@ class ElasticSearch extends Module
 		);
 
 		return $products ? $products : array();
+	}
+
+	public function getProductsCount($id_shop)
+	{
+		return (int)Db::getInstance()->getValue('
+			SELECT count(`id_product`)
+			FROM `'._DB_PREFIX_.'product_shop`
+			WHERE `active` = 1
+				AND `id_shop` = "'.(int)$id_shop.'"
+				AND `visibility` IN ("both", "search")'
+		);
 	}
 
 	public function processAjaxSearch()
