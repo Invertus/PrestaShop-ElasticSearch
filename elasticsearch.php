@@ -75,7 +75,7 @@ class ElasticSearch extends Module
 			CREATE TABLE IF NOT EXISTS `'._DB_PREFIX_.'elasticsearch_template` (
 				`id_elasticsearch_template` int(10) unsigned NOT NULL AUTO_INCREMENT,
 				`name` varchar(64) NOT NULL,
-				`filters` text,
+				`filters` mediumtext,
 				`n_categories` int(10) unsigned NOT NULL,
 				`date_add` datetime NOT NULL,
 			PRIMARY KEY (`id_elasticsearch_template`)
