@@ -5,6 +5,8 @@ require_once(_ELASTICSEARCH_CORE_DIR_.'AbstractLogger.php');
 
 abstract class AbstractFilter extends Brad\AbstractLogger
 {
+	const FILENAME = 'AbstractFilter';
+
 	/* Available filters types */
 	const FILTER_TYPE_PRICE = 'price';
 	const FILTER_TYPE_WEIGHT = 'weight';
@@ -14,8 +16,17 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	const FILTER_TYPE_ATTRIBUTE_GROUP = 'id_attribute_group';
 	const FILTER_TYPE_FEATURE = 'id_feature';
 
-	private static $search_service;
+	const FILTER_STYLE_SLIDER = 0;
+	const FILTER_STYLE_INPUTS_AREA = 1;
+	const FILTER_STYLE_LIST_OF_VALUES = 2;
+
+	public static $search_service;
+	public $enabled_filters;
+
+	protected $filters_products_counts;
+
 	private $filters_block;
+	private $module_instance;//for translations
 
 	public function __construct($service_type)
 	{
@@ -29,42 +40,42 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	 */
 	public function generateFiltersBlock($id_category, array $extra_filters = array())
 	{
-		$enabled_filters = $this->getEnabledFiltersByCategory($id_category);
+		$this->enabled_filters = $this->getEnabledFiltersByCategory($id_category);
 		$filters = array();
 
-		foreach ($enabled_filters as $enabled_filter)
+		foreach ($this->enabled_filters as $type => $enabled_filter)
 		{
 			$filter = array();
 
 			/* Getting filters by types */
-			switch ($enabled_filter['type'])
+			switch ($type)
 			{
 				case self::FILTER_TYPE_PRICE:
-					$filter = $this->getPriceFilter();
+					$filter = $this->getPriceFilter($enabled_filter);
 					break;
 				case self::FILTER_TYPE_WEIGHT:
-					$filter = $this->getWeightFilter();
+					$filter = $this->getWeightFilter($enabled_filter);
 					break;
 				case self::FILTER_TYPE_CONDITION:
-					$filter = $this->getConditionFilter(array_unique($enabled_filter['values']));
+					$filter = $this->getConditionFilter($enabled_filter);
 					break;
 				case self::FILTER_TYPE_QUANTITY:
-					$filter = $this->getQuantityFilter(array_unique($enabled_filter['values']));
+					$filter = $this->getQuantityFilter($enabled_filter);
 					break;
 				case self::FILTER_TYPE_MANUFACTURER:
-					$filter = $this->getManufacturerFilter(array_unique($enabled_filter['values']));
+					$filter = $this->getManufacturerFilter($enabled_filter);
 					break;
 				case self::FILTER_TYPE_ATTRIBUTE_GROUP:
-					$filter = $this->getAttributeGroupFilter(array_unique($enabled_filter['values']));
+					$filter = $this->getAttributeGroupFilter($enabled_filter);
 					break;
 				case self::FILTER_TYPE_FEATURE:
-					$filter = $this->getFeatureFilter(array_unique($enabled_filter['values']));
+					$filter = $this->getFeatureFilter($enabled_filter);
 					break;
 			}
 
 			//Merging filters to one array
 			if ($filter)
-				$filters = array_merge($filters, $filter);
+				$filters[] = $filter;
 		}
 
 		//adding extra filters
@@ -73,8 +84,15 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
 		$this->sortFilters($filters);
 
+		$translate = array();
+		$translate['price'] = $this->module_instance->l('price', self::FILENAME);
+		$translate['weight'] = $this->module_instance->l('weight', self::FILENAME);
+
 		Context::getContext()->smarty->assign(array(
-			'filters' => $filters
+			'filters' => $filters,
+			'nbr_filterBlocks' => count($this->enabled_filters),
+			'id_elasticsearch_category' => $id_category,
+			'elasticsearchSliderName' => $translate
 		));
 
 		return Context::getContext()->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
@@ -94,6 +112,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 		$id_category = (int)Tools::getValue('id_elasticsearch_category');
 		$category = new Category($id_category, (int)Context::getContext()->cookie->id_lang);
 		$products_per_page_default = (int)Configuration::get('PS_PRODUCTS_PER_PAGE');
+
 		$n_array = $products_per_page_default > 0 ?
 			array($products_per_page_default, $products_per_page_default * 2, $products_per_page_default * 3, $products_per_page_default * 5) :
 			array(10, 20, 50);
@@ -164,6 +183,22 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 		);
 	}
 
+	public function sanitizeValue($value)
+	{
+		if (version_compare(_PS_VERSION_, '1.6.0.7', '>=') === true)
+			return Tools::purifyHTML($value);
+		else
+			return filter_var($value, FILTER_SANITIZE_STRING);
+	}
+
+	public function getModuleInstance()
+	{
+		if (!$this->module_instance)
+			$this->module_instance = Module::getInstanceByName('elasticsearch');
+
+		return $this->module_instance;
+	}
+
 	/**
 	 * @param $selected_filters array selected filters
 	 * @param bool $count_only return only number of results?
@@ -183,14 +218,16 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	abstract public function getSelectedFilters();
 
 	/**
+	 * @param $values array price filter values
 	 * @return array price filter data to be used in template
 	 */
-	abstract protected function getPriceFilter();
+	abstract protected function getPriceFilter($values);
 
 	/**
+	 * @param $values array weight filter values
 	 * @return array weight filter data to be used in template
 	 */
-	abstract protected function getWeightFilter();
+	abstract protected function getWeightFilter($values);
 
 	/**
 	 * @param $values array available condition values - ID of condition => name of condition
@@ -227,4 +264,10 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	 * @return array categories filter data to be used in template
 	 */
 	abstract protected function getCategoryFilter($values);
+
+	/**
+	 * Returns count of products for each filter
+	 * @return array
+	 */
+	abstract public function getAggregations();
 }

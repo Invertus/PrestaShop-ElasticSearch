@@ -45,7 +45,7 @@ class ElasticSearchService extends SearchService
 
 		if (!($prefix = Configuration::get('ELASTICSEARCH_INDEX_PREFIX')))
 		{
-			$prefix = Tools::passwdGen().'_';
+			$prefix = Tools::strtolower(Tools::passwdGen()).'_';
 			Configuration::updateValue('ELASTICSEARCH_INDEX_PREFIX', $prefix);
 		}
 
@@ -477,18 +477,23 @@ class ElasticSearchService extends SearchService
 		return (bool)$this->client->exists($params);
 	}
 
-	public function search($type, array $query, $pagination = 50, $from = 0, $order_by = null, $order_way = null, $filter = null)
+	public function search($type, array $query, $pagination = 50, $from = 0, $order_by = null, $order_way = null, $filter = null, $aggregation = false, $partial_fields = null)
 	{
 		$params = array(
 			'index' => $this->index,
 			'body' => array()
 		);
 
-		if ($query)
+		if ($aggregation)
+			$params['body'] = $query;
+		elseif ($query)
 			$params['body']['query'] = $query;
 
 		if ($type !== null)
 			$params['type'] = $type;
+
+		if ($partial_fields)
+			$params['body']['partial_fields'] = $partial_fields;
 
 		if ($filter !== null)
 			$params['body']['filter'] = $filter;
@@ -510,11 +515,30 @@ class ElasticSearchService extends SearchService
 			if ($order_by && $order_way)
 				$params['sort'] = array($order_by.':'.$order_way);
 
+			if ($aggregation)
+				return $this->client->search($params);
+
 			return $this->client->search($params)['hits']['hits'];   // Execute the search
 		} catch (Exception $e) {
 			self::log('Search failed', array('Message' => $e->getMessage(), 'index' => $this->index, 'params' => $params));
 			return array();
 		}
+	}
+
+	public function getAggregationQuery(array $required_fields)
+	{
+		$aggregation_query = array();
+
+		foreach ($required_fields as $field)
+		{
+			$aggregation_query[$field['alias']] = array(
+				$field['aggregation_type'] => array(
+					'field' => $field['field']
+				)
+			);
+		}
+
+		return $aggregation_query;
 	}
 
 	public function getDocumentsCount($type, array $query, $filter = null)
@@ -562,6 +586,11 @@ class ElasticSearchService extends SearchService
 		foreach (Language::getLanguages(false) as $lang)
 		{
 			$index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']] = array(
+				'type' => 'string',
+				'index' => 'not_analyzed'
+			);
+
+			$index_params['body']['mappings']['products']['properties']['name_'.$lang['id_lang']] = array(
 				'type' => 'string',
 				'index' => 'not_analyzed'
 			);

@@ -216,8 +216,8 @@
 
 {if $nbr_filterBlocks != 0}
 	{strip}
-		{addJsDef param_product_url='#'|cat:$param_product_url}
-		{addJsDef blocklayeredSliderName=$blocklayeredSliderName}
+		{addJsDef param_product_url='#'}
+		{addJsDef blocklayeredSliderName=$elasticsearchSliderName}
 
 		{if isset($filters) && $filters|@count}
 			{addJsDef filters=$filters}

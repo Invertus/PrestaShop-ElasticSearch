@@ -806,13 +806,6 @@ class ElasticSearch extends Module
 			if (!Configuration::get('ELASTICSEARCH_DISPLAY_FILTER'))
 				return '';
 
-			require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
-
-			$elasticsearch_filter = new ElasticSearchFilter();
-
-			if (!$elasticsearch_filter->generateFiltersBlock($elasticsearch_filter->getSelectedFilters()))
-				return '';
-
 			$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.$this->name.'.css');
 			$this->context->controller->addJS(_ELASTICSEARCH_JS_URI_.'filter.js');
 			$this->context->controller->addJS(_PS_JS_DIR_.'jquery/jquery-ui-1.8.10.custom.min.js');
@@ -821,7 +814,10 @@ class ElasticSearch extends Module
 			$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.'filter.css');
 			$this->context->controller->addJQueryPlugin('scrollTo');
 
-			return $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
+			require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
+			$elasticsearch_filter = new ReworkedElasticSearchFilter();
+
+			return $elasticsearch_filter->getFiltersBlock(Tools::getValue('id_category'));
 		} catch (Exception $e) {
 			return '';
 		}
