@@ -45,7 +45,7 @@ class ElasticSearchService extends SearchService
 
 		if (!($prefix = Configuration::get('ELASTICSEARCH_INDEX_PREFIX')))
 		{
-			$prefix = Tools::passwdGen().'_';
+			$prefix = Tools::strtolower(Tools::passwdGen()).'_';
 			Configuration::updateValue('ELASTICSEARCH_INDEX_PREFIX', $prefix);
 		}
 
