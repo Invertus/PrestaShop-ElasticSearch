@@ -187,8 +187,8 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	{
 		if (version_compare(_PS_VERSION_, '1.6.0.7', '>=') === true)
 			return Tools::purifyHTML($value);
-		else
-			return filter_var($value, FILTER_SANITIZE_STRING);
+
+		return filter_var($value, FILTER_SANITIZE_STRING);
 	}
 
 	public function getModuleInstance()
