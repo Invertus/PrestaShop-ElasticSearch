@@ -303,7 +303,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		$weight_array['max'] = $aggregations['max_weight'];
 		$weight_array['values'][1] = $weight_array['max'];
 
-		if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] != null)
+		if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] !== null)
 		{
 			$selected_filters = $this->getSelectedFilters();
 
