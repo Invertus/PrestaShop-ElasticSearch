@@ -531,11 +531,20 @@ class ElasticSearchService extends SearchService
 
 		foreach ($required_fields as $field)
 		{
-			$aggregation_query[$field['alias']] = array(
-				$field['aggregation_type'] => array(
-					'field' => $field['field']
-				)
-			);
+			if (isset($field['filter']))
+			{
+				$aggregation_query[$field['alias']] = array(
+					'filter' => $field['filter']
+				);
+			}
+			else
+			{
+				$aggregation_query[$field['alias']] = array(
+					$field['aggregation_type'] => array(
+						'field' => $field['field']
+					)
+				);
+			}
 		}
 
 		return $aggregation_query;
