@@ -323,12 +323,75 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	}
 
 	/**
-	 * @param $values array available condition values - ID of condition => name of condition
+	 * @param $filter array available condition values - ID of condition => name of condition
 	 * @return array product condition filter data to be used in template
 	 */
-	protected function getConditionFilter($values)
+	protected function getConditionFilter($filter)
 	{
-		// TODO: Implement getConditionFilter() method.
+		if (isset($filter[0]))
+			$filter = $filter[0];
+
+		$condition_filter = array(
+			'type_lite' => 'condition',
+			'type' => 'condition',
+			'id_key' => 0,
+			'name' => $this->getModuleInstance()->l('Condition', self::FILENAME),
+			'values' => array(),
+			'filter_show_limit' => $filter['filter_show_limit'],
+			'filter_type' => $filter['filter_type']
+		);
+
+		$aggregations = $this->getAggregations();
+
+		if (!isset($aggregations['condition']))
+			return $condition_filter;
+
+		$selected_filters = $this->getSelectedFilters();
+		$condition_array = array();
+
+		if (isset($aggregations['condition']['new']) && ($aggregations['condition']['new'] || !$this->hide_0_values))
+		{
+			$condition_array['new'] = array(
+				'name' => $this->getModuleInstance()->l('New', self::FILENAME),
+				'nbr' => $aggregations['condition']['new']
+			);
+
+			if (isset($selected_filters['condition']) && in_array('new', $selected_filters['condition']))
+				$condition_array['new']['checked'] = true;
+		}
+
+		if (isset($aggregations['condition']['used']) && ($aggregations['condition']['used'] || !$this->hide_0_values))
+		{
+			$condition_array['used'] = array(
+				'name' => $this->getModuleInstance()->l('Used', self::FILENAME),
+				'nbr' => $aggregations['condition']['used'],
+				'checked' => isset($selected_filters['condition']) && in_array('used', $selected_filters['condition'])
+			);
+
+			if (isset($selected_filters['condition']) && in_array('used', $selected_filters['condition']))
+				$condition_array['used']['checked'] = true;
+		}
+
+		if (isset($aggregations['condition']['refurbished']) && ($aggregations['condition']['refurbished'] || !$this->hide_0_values))
+		{
+			$condition_array['refurbished'] = array(
+				'name' => $this->getModuleInstance()->l('Refurbished', self::FILENAME),
+				'nbr' => $aggregations['condition']['refurbished']
+			);
+
+			if (isset($selected_filters['condition']) && in_array('refurbished', $selected_filters['condition']))
+				$condition_array['refurbished']['checked'] = true;
+		}
+
+		return array(
+			'type_lite' => 'condition',
+			'type' => 'condition',
+			'id_key' => 0,
+			'name' => $this->getModuleInstance()->l('Condition', self::FILENAME),
+			'values' => $condition_array,
+			'filter_show_limit' => $filter['filter_show_limit'],
+			'filter_type' => $filter['filter_type']
+		);
 	}
 
 	/**
