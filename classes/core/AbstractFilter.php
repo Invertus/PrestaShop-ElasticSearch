@@ -22,6 +22,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
 	public static $search_service;
 	public $enabled_filters;
+	public $hide_0_values;
 
 	protected $filters_products_counts;
 
@@ -31,6 +32,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	public function __construct($service_type)
 	{
 		self::$search_service = SearchService::getInstance($service_type);
+		$this->hide_0_values = (int)Configuration::get('ELASTICSEARCH_HIDE_0_VALUES');
 	}
 
 	/**
