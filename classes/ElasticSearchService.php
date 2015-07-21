@@ -164,9 +164,14 @@ class ElasticSearchService extends SearchService
 
 		foreach ($product->name as $id_lang => $name)
 		{
+			$category_link_rewrite = Category::getLinkRewrite((int)$product->id_category_default, $id_lang);
+			
 			$body['name_'.$id_lang] = $name;
 			$body['link_rewrite_'.$id_lang] = $product->link_rewrite[$id_lang];
 			$body['description_short_'.$id_lang] = $product->description_short[$id_lang];
+			$body['description_'.$id_lang] = $product->description[$id_lang];
+			$body['default_category_link_rewrite_'.$id_lang] = $category_link_rewrite;
+			$body['link_'.$id_lang] = Context::getContext()->link->getProductLink((int)$product->id, $product->link_rewrite[$id_lang], $category_link_rewrite, $product->ean13);
 			$body['search_keywords_'.$id_lang][] = $product->reference;
 			$body['search_keywords_'.$id_lang][] = $name;
 			$body['search_keywords_'.$id_lang][] = strip_tags($product->description[$id_lang]);
