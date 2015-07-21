@@ -307,12 +307,15 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		{
 			$selected_filters = $this->getSelectedFilters();
 
-			if ($selected_filters && isset($selected_filters['weight']) && isset($selected_filters['weight'][0])
+			if ($selected_filters
+				&& isset($selected_filters['weight'])
+				&& isset($selected_filters['weight'][0])
 				&& isset($selected_filters['weight'][1]))
 			{
 				$weight_array['values'][0] = $selected_filters['weight'][0];
 				$weight_array['values'][1] = $selected_filters['weight'][1];
 			}
+
 			return $weight_array;
 		}
 
