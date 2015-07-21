@@ -48,7 +48,7 @@ class ElasticSearchFilter extends ElasticSearchService
 			$this->context->smarty->assign($filter_block);
 			$this->context->smarty->assign(array(
 				'hide_0_values' => Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'),
-				'blocklayeredSliderName' => $translate,
+				'elasticsearchSliderName' => $translate,
 				'col_img_dir' => _PS_COL_IMG_DIR_
 			));
 			return $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
