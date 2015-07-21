@@ -147,12 +147,12 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			'filtersBlock' => utf8_encode($this->getFiltersBlock($id_category)),
 			'productList' => utf8_encode(
 				$pagination_variables['nb_products'] == 0 ?
-					$this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/elasticsearch-filter-no-products.tpl') :
-					$this->context->smarty->fetch(_PS_THEME_DIR_.'product-list.tpl')
+					Context::getContext()->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/elasticsearch-filter-no-products.tpl') :
+					Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'product-list.tpl')
 			),
-			'pagination' => $this->context->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl'),
+			'pagination' => Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl'),
 			'categoryCount' => file_exists(_PS_THEME_DIR_.'category-count.tpl') ?
-				$this->context->smarty->fetch(_PS_THEME_DIR_.'category-count.tpl') : '',
+				Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'category-count.tpl') : '',
 			'current_friendly_url' => $this->getCurrentFriendlyUrl(),
 			'filters' => $this->getFiltersBlock($id_category),
 			'nbRenderedProducts' => $pagination_variables['nb_products'],
