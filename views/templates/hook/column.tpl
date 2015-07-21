@@ -87,7 +87,7 @@
 														{if !$value.nbr}
 															{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}
 														{else}
-															<a href="{$value.link}"{if $value.rel|trim != ''} data-rel="{$value.rel}"{/if}>{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
+															<a href="javascript:void(0);">{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
 														{/if}
 													</label>
 												</li>
@@ -108,7 +108,7 @@
 															{if !$value.nbr}
 																{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}
 															{else}
-																<a href="{$value.link}"{if $value.rel|trim != ''} data-rel="{$value.rel}"{/if}>{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
+																<a href="javascript:void(0);">{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
 															{/if}
 														</label>
 													</li>
