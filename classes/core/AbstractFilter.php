@@ -20,6 +20,11 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	const FILTER_STYLE_INPUTS_AREA = 1;
 	const FILTER_STYLE_LIST_OF_VALUES = 2;
 
+	//product out of stock constants
+	const PRODUCT_OOS_DENY_ORDERS = 0;
+	const PRODUCT_OOS_ALLOW_ORDERS = 1;
+	const PRODUCT_OOS_USE_GLOBAL = 2;
+
 	public static $search_service;
 	public $enabled_filters;
 	public $hide_0_values;
