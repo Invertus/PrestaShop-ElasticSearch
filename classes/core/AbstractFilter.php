@@ -94,7 +94,8 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			'filters' => $filters,
 			'nbr_filterBlocks' => count($this->enabled_filters),
 			'id_elasticsearch_category' => $id_category,
-			'elasticsearchSliderName' => $translate
+			'elasticsearchSliderName' => $translate,
+			'elasticsearch_show_qties' => (int)Configuration::get('ELASTICSEARCH_SHOW_QTIES')
 		));
 
 		return Context::getContext()->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
