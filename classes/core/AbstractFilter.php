@@ -116,8 +116,9 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	 * @return array all variables that are needed to display filters page
 	 */
 	public function ajaxCall()
-	{//todo finish this method
+	{
 		$id_category = (int)Tools::getValue('id_elasticsearch_category');
+		//todo avoid using category object
 		$category = new Category($id_category, (int)Context::getContext()->cookie->id_lang);
 		$products_per_page_default = (int)Configuration::get('PS_PRODUCTS_PER_PAGE');
 
@@ -125,7 +126,9 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			array($products_per_page_default, $products_per_page_default * 2, $products_per_page_default * 3, $products_per_page_default * 5) :
 			array(10, 20, 50);
 
-		$pagination_variables = $this->getPaginationVariables();
+		$products = $this->getProductsBySelectedFilters($this->getSelectedFilters());
+
+		$pagination_variables = $this->getPaginationVariables(count($products));
 
 		Context::getContext()->smarty->assign(array_merge(
 			array(
@@ -133,7 +136,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 				'category' => $category,
 				'n_array' => $n_array,
 				'comparator_max_item' => (int)Configuration::get('PS_COMPARATOR_MAX_ITEM'),
-				'products' => $this->getProductsBySelectedFilters($this->getSelectedFilters()),
+				'products' => $products,
 				'products_per_page' => $products_per_page_default,
 				'static_token' => Tools::getToken(false),
 				'page_name' => 'category',
@@ -169,6 +172,10 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 		return str_replace('&submitElasticsearchFilter=1', '', $friendly_url[0]);
 	}
 
+	/**
+	 * @param $id_category - category for which filter block is generated
+	 * @return string html of filters block
+	 */
 	public function getFiltersBlock($id_category)
 	{
 		if ($this->filters_block === null)
@@ -177,16 +184,39 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 		return $this->filters_block;
 	}
 
-	protected function getPaginationVariables()
-	{//todo
+	protected function getPaginationVariables($nb_products)
+	{
+		$range = 2; // how many pages around selected page
+		$n = (int)Tools::getValue('n'); // how many products per page
+		$p = (int)Tools::getValue('p'); // current page
+
+		if ($n < 1)
+			$n = (int)Configuration::get('PS_PRODUCTS_PER_PAGE');
+
+		if ($p < 1)
+			$p = 1;
+
+		if ($p > ($nb_products / $n))
+			$p = ceil($nb_products / $n);
+
+		$pages_nb = ceil($nb_products / $n);
+		$start = $p - $range;
+		$stop = $p + $range;
+
+		if ($start < 1)
+			$start = 1;
+
+		if ($stop > $pages_nb)
+			$stop = $pages_nb;
+
 		return array(
-			'nb_products' => '',
-			'pages_nb' => '',
-			'p' => '',
-			'n' => '',
-			'range' => '',
-			'start' => '',
-			'stop' => '',
+			'nb_products' => $nb_products,
+			'pages_nb' => $pages_nb,
+			'p' => $p,
+			'n' => $n,
+			'range' => 2,
+			'start' => $start,
+			'stop' => $stop,
 			'paginationId' => 'bottom'
 		);
 	}
