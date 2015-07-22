@@ -117,6 +117,7 @@ class ElasticSearchService extends SearchService
 		$body['customizable'] = $product->customizable;
 		$body['minimal_quantity'] = $product->minimal_quantity;
 		$body['show_price'] = $product->show_price;
+		$body['id_combination_default'] = Product::getDefaultAttribute($product->id);
 
 		$cover = Product::getCover($product->id);
 		$body['id_image'] = isset($cover['id_image']) ? $cover['id_image'] : $cover;
