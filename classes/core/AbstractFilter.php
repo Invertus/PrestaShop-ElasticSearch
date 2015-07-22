@@ -135,8 +135,9 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			array(10, 20, 50);
 
 		$products = $this->getProductsBySelectedFilters($this->getSelectedFilters());
+		$nb_products = $this->getProductsBySelectedFilters($this->getSelectedFilters(), true);
 
-		$pagination_variables = $this->getPaginationVariables(count($products));
+		$pagination_variables = $this->getPaginationVariables($nb_products);
 
 		Context::getContext()->smarty->assign(array_merge(
 			array(
@@ -154,6 +155,8 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			$pagination_variables
 		));
 
+		$pagination_bottom_html = Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl');
+
 		return array(
 			'filtersBlock' => utf8_encode($this->getFiltersBlock($id_category)),
 			'productList' => utf8_encode(
@@ -161,14 +164,15 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 					Context::getContext()->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/elasticsearch-filter-no-products.tpl') :
 					Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'product-list.tpl')
 			),
-			'pagination' => Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl'),
+			'pagination_bottom' => $pagination_bottom_html,
+			//pagination is identical in top and bottom so just remove the _bottom suffix and use the same html
+			'pagination' => preg_replace('/(_bottom)/i', '', $pagination_bottom_html),
 			'categoryCount' => file_exists(_PS_THEME_DIR_.'category-count.tpl') ?
 				Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'category-count.tpl') : '',
 			'current_friendly_url' => $this->getCurrentFriendlyUrl(),
 			'filters' => $this->getFilters(),
 			'nbRenderedProducts' => $pagination_variables['nb_products'],
-			'nbAskedProducts' => $pagination_variables['n'],
-			'pagination_bottom' => Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl')
+			'nbAskedProducts' => $pagination_variables['n']
 		);
 	}
 
