@@ -119,6 +119,12 @@ class ElasticSearchService extends SearchService
 		$body['show_price'] = $product->show_price;
 		$body['id_combination_default'] = Product::getDefaultAttribute($product->id);
 
+		//is product in stock when "PS_ORDER_OUT_OF_STOCK" is true
+		$body['in_stock_when_global_oos_allow_orders'] = (int)($product->quantity > 0 || $product->out_of_stock != 0);
+
+		//is product in stock when "PS_ORDER_OUT_OF_STOCK" is false
+		$body['in_stock_when_global_oos_deny_orders'] = (int)($product->quantity > 0 || $product->out_of_stock == 1);
+
 		$cover = Product::getCover($product->id);
 		$body['id_image'] = isset($cover['id_image']) ? $cover['id_image'] : $cover;
 
