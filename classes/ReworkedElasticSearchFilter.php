@@ -196,7 +196,320 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	 */
 	public function getProductsBySelectedFilters($selected_filters, $count_only = false)
 	{
-		// TODO: Implement getProductsBySelectedFilters() method.
+		//building search query for selected filters
+		$query = $this->getProductsQueryByFilters($selected_filters, $filter);
+
+		$this->fixFilterQuery($filter);
+
+		if ($count_only)
+			return AbstractFilter::$search_service->getDocumentsCount('products', $query, $filter);
+
+		$page = (int)Tools::getValue('p');
+
+		if ($page < 1)
+			$page = 1;
+
+		$pagination = (int)Tools::getValue('n');
+		$start = ($page - 1) * $pagination;
+		$order_by_values = array(0 => 'name', 1 => 'price', 6 => 'quantity', 7 => 'reference');
+		$order_way_values = array(0 => 'asc', 1 => 'desc');
+
+		$order_by = Tools::strtolower(
+			Tools::getValue('orderby',
+				isset($order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')]) ?
+					$order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')] : null)
+		);
+
+		if ($order_by && !in_array($order_by, $order_by_values))
+			$order_by = null;
+
+		$order_way = Tools::strtolower(Tools::getValue('orderway',
+			isset($order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')]) ?
+				$order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')] : null)
+		);
+
+		if ($order_by == 'name')
+			$order_by .= '_'.(int)Context::getContext()->language->id;
+
+		$required_fields = array(
+			'out_of_stock',
+			'id_category_default',
+			'link_rewrite_'.Context::getContext()->language->id,
+			'default_category_link_rewrite_'.Context::getContext()->language->id,
+			'link_'.Context::getContext()->language->id,
+			'name_'.Context::getContext()->language->id,
+			'description_short_'.Context::getContext()->language->id,
+			'description_'.Context::getContext()->language->id,
+			'ean13',
+			'id_image',
+			'customizable',
+			'minimal_quantity',
+			'available_for_order',
+			'show_price',
+			'price',
+			'quantity',
+			'id_combination_default'
+		);
+
+		$partial_fields = $this->getPartialFields($required_fields);
+
+		$products = AbstractFilter::$search_service->search(
+			'products',
+			$query,
+			$pagination ? $pagination : null,
+			$start,
+			$order_by,
+			$order_way,
+			$filter,
+			false,
+			$partial_fields
+		);
+
+		$products_data = array();
+
+		$global_allow_oosp = (int)Configuration::get('PS_ORDER_OUT_OF_STOCK');
+
+		foreach ($products as $product)
+		{
+			$allow_oosp = $this->extractProductField($product, 'out_of_stock');
+			$allow_oosp =
+				$allow_oosp == AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS ||
+				($allow_oosp == AbstractFilter::PRODUCT_OOS_USE_GLOBAL && $global_allow_oosp);
+
+			$products_data[] = array(
+				'id_product' => $product['_id'],
+				'out_of_stock' => $this->extractProductField($product, 'out_of_stock'),
+				'id_category_default' => $this->extractProductField($product, 'id_category_default'),
+				'link_rewrite' => $this->extractProductField($product, 'link_rewrite_'.Context::getContext()->language->id),
+				'name' => $this->extractProductField($product, 'name_'.Context::getContext()->language->id),
+				'description_short' => $this->extractProductField($product, 'description_short_'.Context::getContext()->language->id),
+				'ean13' => $this->extractProductField($product, 'ean13'),
+				'id_image' => $this->extractProductField($product, 'id_image'),
+				'customizable' => $this->extractProductField($product, 'customizable'),
+				'minimal_quantity' => $this->extractProductField($product, 'minimal_quantity'),
+				'available_for_order' => $this->extractProductField($product, 'available_for_order'),
+				'show_price' => $this->extractProductField($product, 'show_price'),
+				'quantity' => $this->extractProductField($product, 'quantity'),
+				'id_product_attribute' =>  $this->extractProductField($product, 'id_combination_default'),
+				'price' => $this->extractProductField($product, 'price'),
+				'allow_oosp' => $allow_oosp,
+				'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id)
+			);
+		}
+
+		return $products_data;
+	}
+
+	public function extractProductField($product, $field_name)
+	{
+		return isset($product['fields']['data'][0][$field_name]) ? $product['fields']['data'][0][$field_name] : null;
+	}
+
+	//todo get rid of this method
+	public function fixFilterQuery(&$filter_query, $operator = 'and')
+	{
+		if (count($filter_query) < 2)
+		{
+			if (isset($filter_query[0]))
+				$filter_query = $filter_query[0];
+		}
+		else
+			$filter_query = array($operator => $filter_query);
+	}
+
+	public function getProductsQueryByFilters($selected_filters, &$filter_query = null)
+	{
+		//todo finish this method
+		$query = array();
+		$search_values = array();
+
+		$price_counter = 0;
+		$weight_counter = 0;
+
+		foreach ($selected_filters as $key => $filter_values)
+		{
+			if (!count($filter_values))
+				continue;
+
+			preg_match('/^(.*[^_0-9])/', $key, $res);
+			$key = $res[1];
+
+			foreach ($filter_values as $value)
+				switch ($key)
+				{
+					case 'id_feature':
+						$parts = explode('_', $value);
+
+						if (count($parts) != 2)
+							break;
+
+						$search_values['id_feature'][] = array(
+							'term' =>  array(
+								'feature_'.$parts[0] => $parts[1]
+							)
+						);
+						break;
+
+					case 'id_attribute_group':
+						$parts = explode('_', $value);
+
+						if (count($parts) != 2)
+							break;
+
+						$search_values['id_attribute_group'][] = array(
+							'term' =>  array(
+								'attribute_group_'.$parts[0] => $parts[1]
+							)
+						);
+						break;
+
+					case 'category':
+						$search_values['categories'][] = array(
+							'term' => array(
+								'categories' => $value
+							)
+						);
+						break;
+
+					case 'quantity':
+						//If in_stock was already processed it means that both "In stock" and "Not available" values are selected in filter
+						//in this case we do not need to add quantity filter at all - need to remove previously set filter.
+						if (isset($search_values['in_stock']))
+						{
+							unset($search_values['in_stock']);
+							break;
+						}
+
+						//if stock management is disabled all products are available
+						if (!Configuration::get('PS_STOCK_MANAGEMENT'))
+							break;
+
+						$global_oos_deny_orders = !Configuration::get('PS_ORDER_OUT_OF_STOCK');
+
+						$search_values['in_stock'] = array(
+							'term' => array(
+								'in_stock_when_global_oos_'.($global_oos_deny_orders ? 'deny' : 'allow').'_orders' => $value
+							)
+						);
+
+						break;
+
+					case 'manufacturer':
+						$search_values['manufacturer'][] = array(
+							'term' => array(
+								'id_manufacturer' => $value
+							)
+						);
+						break;
+
+					case 'condition':
+						$search_values['condition'][] = array(
+							'match' => array(
+								'condition' => $value
+							)
+						);
+						break;
+
+					case 'weight':
+						if ($weight_counter == 0)
+							$search_values['weight']['gte'] = $value;
+						elseif ($weight_counter == 1)
+							$search_values['weight']['lte'] = $value;
+
+						$weight_counter++;
+						break;
+
+					case 'price':
+						break;//todo
+						if ($price_counter == 0)
+							$search_values['price'][0] = (int)$value;
+						elseif ($price_counter == 1)
+							$search_values['price'][1] = ceil($value);
+
+						$price_counter++;
+						break;
+				}
+		}
+
+		$query['bool']['must'] = $this->getQueryFromSearchValues($search_values);
+
+		//completing price query
+		if (isset($search_values['price'][0]) && isset($search_values['price'][1]))
+		{
+			$filter_query[] = array(
+				'or' => array(
+					array(
+						'range' => array(
+							'price_min_'.(int)Context::getContext()->currency->id => array(
+								'gte' => $search_values['price'][0],
+								'lte' => $search_values['price'][1]
+							)
+						)
+					),
+					array(
+						'range' => array(
+							'price_min_'.(int)Context::getContext()->currency->id => array(
+								'lt' => $search_values['price'][0]
+							),
+							'price_max_'.(int)Context::getContext()->currency->id => array(
+								'gt' => $search_values['price'][0]
+							)
+						)
+					),
+					array(
+						'range' => array(
+							'price_min_'.(int)Context::getContext()->currency->id => array(
+								'lt' => $search_values['price'][1]
+							),
+							'price_max_'.(int)Context::getContext()->currency->id => array(
+								'gt' => $search_values['price'][1]
+							)
+						)
+					)
+				)
+			);
+		}
+
+		//completing categories query
+		if (isset($search_values['categories']))
+			$filter_query[] = array('or' => $search_values['categories']);
+		else
+			$query['bool']['must'][] = array(
+				'term' => array(
+					'categories' => $this->id_category
+				)
+			);
+
+		return $query;
+	}
+
+	/**
+	 * Returns formatted query to use in ElasticSearch requests
+	 * @param $search_values array values that should be included in search query
+	 * @return array
+	 */
+	public function getQueryFromSearchValues(array $search_values)
+	{
+		$query = array();
+
+		foreach ($search_values as $key => $value)
+		{
+			if (in_array($key, array('condition', 'manufacturer', 'in_stock', 'id_feature', 'id_attribute_group')))
+				$query[] = array(
+					'bool' => array(
+						'should' => $value,
+						'minimum_should_match' => 1
+					)
+				);
+			elseif ($key == 'weight')
+				$query[] = array(
+					'range' => array(
+						'weight' => $value
+					)
+				);
+		}
+
+		return $query;
 	}
 
 	/**
@@ -295,9 +608,24 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		return $this->selected_filters;
 	}
 
-	public function getPartialFields($required_fields)
+	/**
+	 * Formats partial fields in correct syntax to use in ElasticSearch calls
+	 * @param array $required_fields
+	 * @return array
+	 */
+	public function getPartialFields(array $required_fields)
 	{
+		$partial_fields = array();
 
+		if ($required_fields)
+		{
+			$partial_fields['data'] = array('include' => array());
+
+			foreach ($required_fields as $field)
+				$partial_fields['data']['include'][] = $field;
+		}
+
+		return $partial_fields;
 	}
 
 	/**
