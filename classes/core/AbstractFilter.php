@@ -31,6 +31,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
 	protected $filters_products_counts;
 
+	private $filters;
 	private $filters_block;
 	private $module_instance;//for translations
 
@@ -95,6 +96,8 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 		$translate['price'] = $this->module_instance->l('price', self::FILENAME);
 		$translate['weight'] = $this->module_instance->l('weight', self::FILENAME);
 
+		$this->filters = $filters;
+
 		Context::getContext()->smarty->assign(array(
 			'filters' => $filters,
 			'nbr_filterBlocks' => count($this->enabled_filters),
@@ -109,6 +112,11 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 	private function sortFilters(&$filters)
 	{//todo
 
+	}
+
+	public function getFilters()
+	{
+		return $this->filters;
 	}
 
 	/**
@@ -157,7 +165,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			'categoryCount' => file_exists(_PS_THEME_DIR_.'category-count.tpl') ?
 				Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'category-count.tpl') : '',
 			'current_friendly_url' => $this->getCurrentFriendlyUrl(),
-			'filters' => $this->getFiltersBlock($id_category),
+			'filters' => $this->getFilters(),
 			'nbRenderedProducts' => $pagination_variables['nb_products'],
 			'nbAskedProducts' => $pagination_variables['n'],
 			'pagination_bottom' => Context::getContext()->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl')
