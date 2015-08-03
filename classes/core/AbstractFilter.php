@@ -93,8 +93,8 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 		$this->sortFilters($filters);
 
 		$translate = array();
-		$translate['price'] = $this->module_instance->l('price', self::FILENAME);
-		$translate['weight'] = $this->module_instance->l('weight', self::FILENAME);
+		$translate['price'] = $this->getModuleInstance()->l('price', self::FILENAME);
+		$translate['weight'] = $this->getModuleInstance()->l('weight', self::FILENAME);
 
 		$this->filters = $filters;
 
