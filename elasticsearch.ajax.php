@@ -42,11 +42,11 @@ if (Tools::isSubmit('submitElasticsearchAjaxSearch'))
 if (Tools::isSubmit('submitElasticsearchFilter'))
 {
 	$module_instance = Module::getInstanceByName('elasticsearch');
+//todo refactor class name
+//	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchService.php');
+	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
 
-	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchService.php');
-	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
-
-	$filter = new ElasticSearchFilter();
+	$filter = new ReworkedElasticSearchFilter();
 	$result = $filter->ajaxCall();
 
 	die(Tools::jsonEncode($result));

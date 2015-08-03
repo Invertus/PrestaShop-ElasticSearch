@@ -801,8 +801,13 @@ class ElasticSearch extends Module
 
 	public function hookDisplayLeftColumn()
 	{
+		//@todo remove test code from this function
+		$use_old = false;
+
 		try
 		{
+$t = microtime(true);
+
 			if (!Configuration::get('ELASTICSEARCH_DISPLAY_FILTER'))
 				return '';
 
@@ -814,10 +819,24 @@ class ElasticSearch extends Module
 			$this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.'filter.css');
 			$this->context->controller->addJQueryPlugin('scrollTo');
 
-			require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
-			$elasticsearch_filter = new ReworkedElasticSearchFilter();
+			if (!$use_old)
+			{
+				require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
+				$elasticsearch_filter = new ReworkedElasticSearchFilter();
 
-			return $elasticsearch_filter->getFiltersBlock(Tools::getValue('id_category'));
+				$res = $elasticsearch_filter->getFiltersBlock(Tools::getValue('id_category'));
+			}
+			else
+			{
+				require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
+				$elasticsearch_filter = new ElasticSearchFilter();
+
+				$res = $elasticsearch_filter->generateFiltersBlock($elasticsearch_filter->getSelectedFilters());
+			}
+
+p(microtime(true) - $t);
+
+			return $res;
 		} catch (Exception $e) {
 			return '';
 		}
