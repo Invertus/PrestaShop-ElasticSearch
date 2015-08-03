@@ -420,11 +420,10 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 						break;
 
 					case 'price':
-						break;//todo
 						if ($price_counter == 0)
-							$search_values['price'][0] = (int)$value;
+							$search_values['price']['gte'] = (int)$value;
 						elseif ($price_counter == 1)
-							$search_values['price'][1] = ceil($value);
+							$search_values['price']['lte'] = ceil($value);
 
 						$price_counter++;
 						break;
@@ -432,43 +431,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		}
 
 		$query['bool']['must'] = $this->getQueryFromSearchValues($search_values);
-
-		//completing price query
-		if (isset($search_values['price'][0]) && isset($search_values['price'][1]))
-		{
-			$filter_query[] = array(
-				'or' => array(
-					array(
-						'range' => array(
-							'price_min_'.(int)Context::getContext()->currency->id => array(
-								'gte' => $search_values['price'][0],
-								'lte' => $search_values['price'][1]
-							)
-						)
-					),
-					array(
-						'range' => array(
-							'price_min_'.(int)Context::getContext()->currency->id => array(
-								'lt' => $search_values['price'][0]
-							),
-							'price_max_'.(int)Context::getContext()->currency->id => array(
-								'gt' => $search_values['price'][0]
-							)
-						)
-					),
-					array(
-						'range' => array(
-							'price_min_'.(int)Context::getContext()->currency->id => array(
-								'lt' => $search_values['price'][1]
-							),
-							'price_max_'.(int)Context::getContext()->currency->id => array(
-								'gt' => $search_values['price'][1]
-							)
-						)
-					)
-				)
-			);
-		}
 
 		//completing categories query
 		if (isset($search_values['categories']))
@@ -495,18 +457,92 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		foreach ($search_values as $key => $value)
 		{
 			if (in_array($key, array('condition', 'manufacturer', 'in_stock', 'id_feature', 'id_attribute_group')))
+			{
 				$query[] = array(
 					'bool' => array(
 						'should' => $value,
 						'minimum_should_match' => 1
 					)
 				);
+			}
 			elseif ($key == 'weight')
+			{
 				$query[] = array(
 					'range' => array(
 						'weight' => $value
 					)
 				);
+			}
+			elseif ($key == 'price')
+			{
+				$query[] = array(
+					'bool' => array(
+						'should' => array(
+							array(
+								'bool' => array(
+									'must' => array(
+										array(
+											'range' => array(
+												'price_min_'.(int)Context::getContext()->currency->id => array(
+													'gte' => $value['gte']
+												)
+											)
+										),
+										array(
+											'range' => array(
+												'price_max_'.(int)Context::getContext()->currency->id => array(
+													'lte' => $value['lte']
+												)
+											)
+										)
+									)
+								)
+							),
+							array(
+								'bool' => array(
+									'must' => array(
+										array(
+											'range' => array(
+												'price_min_'.(int)Context::getContext()->currency->id => array(
+													'lt' => $value['gte']
+												)
+											)
+										),
+										array(
+											'range' => array(
+												'price_max_'.(int)Context::getContext()->currency->id => array(
+													'gt' => $value['gte']
+												)
+											)
+										)
+									)
+								)
+							),
+							array(
+								'bool' => array(
+									'must' => array(
+										array(
+											'range' => array(
+												'price_min_'.(int)Context::getContext()->currency->id => array(
+													'lt' => $value['lte']
+												)
+											)
+										),
+										array(
+											'range' => array(
+												'price_max_'.(int)Context::getContext()->currency->id => array(
+													'gt' => $value['lte']
+												)
+											)
+										)
+									)
+								)
+							)
+						),
+						'minimum_should_match' => 1
+					)
+				);
+			}
 		}
 
 		return $query;
@@ -664,7 +700,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		$price_array['max'] = $max_price;
 		$price_array['values'][1] = $price_array['max'];
 
-		if ($price_array['max'] != $price_array['min'] && $price_array['min'] != null)
+		if ($price_array['max'] != $price_array['min'] && $price_array['min'] !== null)
 		{
 			if ($filter['filter_type'] == AbstractFilter::FILTER_STYLE_LIST_OF_VALUES)
 			{
@@ -966,6 +1002,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	/**
 	 * Gets aggregation value(s) by given name
 	 * @param $name - aggregation name
+	 * @return int|array
 	 */
 	public function getAggregation($name)
 	{

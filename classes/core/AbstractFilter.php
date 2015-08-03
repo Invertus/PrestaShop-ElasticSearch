@@ -198,6 +198,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
 	protected function getPaginationVariables($nb_products)
 	{
+		$nb_products = (int)$nb_products;
 		$range = 2; // how many pages around selected page
 		$n = (int)Tools::getValue('n'); // how many products per page
 		$p = (int)Tools::getValue('p'); // current page
