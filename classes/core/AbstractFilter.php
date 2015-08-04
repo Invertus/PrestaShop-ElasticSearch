@@ -103,6 +103,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 			'nbr_filterBlocks' => count($this->enabled_filters),
 			'id_elasticsearch_category' => $id_category,
 			'elasticsearchSliderName' => $translate,
+			'hide_0_values' => $this->hide_0_values,
 			'elasticsearch_show_qties' => (int)Configuration::get('ELASTICSEARCH_SHOW_QTIES')
 		));
 

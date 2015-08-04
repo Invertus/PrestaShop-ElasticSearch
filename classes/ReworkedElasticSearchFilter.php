@@ -9,6 +9,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
 	public $id_category;
 	public $all_category_products = array();
+	public $price_filter = array();
+	public $weight_filter = array();
 	private $selected_filters;
 
 	public function __construct()
@@ -17,12 +19,40 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		$this->id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category'));
 	}
 
-	public function getFiltersProductsCountsAggregationQuery()
+	public function getPriceAndWeightFilterProductsCountAggregationQuery()
 	{
 		$required_filters = array();
 		$id_currency = Context::getContext()->currency->id;
 
-		foreach ($this->enabled_filters as $type => $enabled_filter)
+		$required_filters[] = array(
+			'aggregation_type' => 'min',
+			'field' => 'price_min_'.$id_currency,
+			'alias' => 'price_min_'.$id_currency
+		);
+		$required_filters[] = array(
+			'aggregation_type' => 'max',
+			'field' => 'price_max_'.$id_currency,
+			'alias' => 'price_max_'.$id_currency
+		);
+		$required_filters[] = array(
+			'aggregation_type' => 'min',
+			'field' => 'weight',
+			'alias' => 'min_weight'
+		);
+		$required_filters[] = array(
+			'aggregation_type' => 'max',
+			'field' => 'weight',
+			'alias' => 'max_weight'
+		);
+
+		return AbstractFilter::$search_service->getAggregationQuery($required_filters);
+	}
+
+	public function getFiltersProductsCountsAggregationQuery($enabled_filters)
+	{
+		$required_filters = array();
+
+		foreach ($enabled_filters as $type => $enabled_filter)
 		{
 			switch ($type)
 			{
@@ -33,29 +63,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 						'alias' => $type
 					);
 					break;
+				// exclude price and weight because they are processed separately
 				case self::FILTER_TYPE_PRICE:
-					$required_filters[] = array(
-						'aggregation_type' => 'min',
-						'field' => 'price_min_'.$id_currency,
-						'alias' => 'price_min_'.$id_currency
-					);
-					$required_filters[] = array(
-						'aggregation_type' => 'max',
-						'field' => 'price_max_'.$id_currency,
-						'alias' => 'price_max_'.$id_currency
-					);
-					break;
 				case self::FILTER_TYPE_WEIGHT:
-					$required_filters[] = array(
-						'aggregation_type' => 'min',
-						'field' => 'weight',
-						'alias' => 'min_weight'
-					);
-					$required_filters[] = array(
-						'aggregation_type' => 'max',
-						'field' => 'weight',
-						'alias' => 'max_weight'
-					);
 					break;
 				case self::FILTER_TYPE_QUANTITY:
 					if (!Configuration::get('PS_STOCK_MANAGEMENT'))
@@ -943,17 +953,12 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	{
 		if ($this->filters_products_counts === null)
 		{
-			$id_category = Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'));
-
-			$query_all = AbstractFilter::$search_service->buildSearchQuery('bool_must', array(
-				'term' => array(
-					'categories' => (int)$id_category
-				)
-			));
+			$selected_filters = $this->getSelectedFilters();
+			$query = $this->getProductsQueryByFilters($selected_filters);
 
 			$query_all = array(
-				'query' => $query_all,
-				'aggs' => $this->getFiltersProductsCountsAggregationQuery()
+				'query' => $query,
+				'aggs' => $this->getFiltersProductsCountsAggregationQuery($this->enabled_filters)
 			);
 
 			$result = AbstractFilter::$search_service->search(
@@ -967,10 +972,36 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 				true
 			);
 
+			$id_category = Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'));
+
+			$query = AbstractFilter::$search_service->buildSearchQuery('bool_must', array(
+				'term' => array(
+					'categories' => (int)$id_category
+				)
+			));
+
+			//price and weight need a different query because all prices/weights have to be included - not only from filtered products
+			$query_price = array(
+				'query' => $query,
+				'aggs' => $this->getPriceAndWeightFilterProductsCountAggregationQuery()
+			);
+
+			$price_result = AbstractFilter::$search_service->search(
+				'products',
+				$query_price,
+				0,
+				null,
+				null,
+				null,
+				null,
+				true
+			);
+
 			if (!isset($result['aggregations']))
 				$this->filters_products_counts = array();
 			else
 			{
+				$result['aggregations'] = array_merge($result['aggregations'], $price_result['aggregations']);
 				$aggregations = array();
 
 				foreach ($result['aggregations'] as $alias => $aggregation)
