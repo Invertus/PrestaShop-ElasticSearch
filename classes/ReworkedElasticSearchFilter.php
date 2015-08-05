@@ -771,10 +771,10 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		$min_weight = $this->getAggregation('min_weight');
 		$max_weight = $this->getAggregation('max_weight');
 
-		$weight_array['min'] = $min_weight;
+		$weight_array['min'] = floor($min_weight);
 		$weight_array['values'][0] = $weight_array['min'];
 
-		$weight_array['max'] = $max_weight;
+		$weight_array['max'] = ceil($max_weight);
 		$weight_array['values'][1] = $weight_array['max'];
 
 		if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] !== null)
