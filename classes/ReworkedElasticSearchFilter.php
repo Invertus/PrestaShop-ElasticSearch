@@ -19,37 +19,10 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		$this->id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category'));
 	}
 
-	public function getPriceAndWeightFilterProductsCountAggregationQuery()
-	{
-		$required_filters = array();
-		$id_currency = Context::getContext()->currency->id;
-
-		$required_filters[] = array(
-			'aggregation_type' => 'min',
-			'field' => 'price_min_'.$id_currency,
-			'alias' => 'price_min_'.$id_currency
-		);
-		$required_filters[] = array(
-			'aggregation_type' => 'max',
-			'field' => 'price_max_'.$id_currency,
-			'alias' => 'price_max_'.$id_currency
-		);
-		$required_filters[] = array(
-			'aggregation_type' => 'min',
-			'field' => 'weight',
-			'alias' => 'min_weight'
-		);
-		$required_filters[] = array(
-			'aggregation_type' => 'max',
-			'field' => 'weight',
-			'alias' => 'max_weight'
-		);
-
-		return AbstractFilter::$search_service->getAggregationQuery($required_filters);
-	}
-
 	public function getFiltersProductsCountsAggregationQuery($enabled_filters)
 	{
+		$selected_filters = $this->getSelectedFilters();
+		$id_currency = Context::getContext()->currency->id;
 		$required_filters = array();
 
 		foreach ($enabled_filters as $type => $enabled_filter)
@@ -60,42 +33,75 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 					$required_filters[] = array(
 						'aggregation_type' => 'terms',
 						'field' => $type,
-						'alias' => $type
+						'alias' => $type,
+						'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
 					);
 					break;
-				// exclude price and weight because they are processed separately
 				case self::FILTER_TYPE_PRICE:
+					if (!isset($price_query))
+						$price_query = $this->getProductsQueryByFilters($selected_filters, $type);
+
+					$required_filters[] = array(
+						'aggregation_type' => 'min',
+						'field' => 'price_min_'.$id_currency,
+						'alias' => 'price_min_'.$id_currency,
+						'filter' => $price_query
+					);
+					$required_filters[] = array(
+						'aggregation_type' => 'max',
+						'field' => 'price_max_'.$id_currency,
+						'alias' => 'price_max_'.$id_currency,
+						'filter' => $price_query
+					);
+					break;
 				case self::FILTER_TYPE_WEIGHT:
+					if (!isset($weight_query))
+						$weight_query = $this->getProductsQueryByFilters($selected_filters, $type);
+
+					$required_filters[] = array(
+						'aggregation_type' => 'min',
+						'field' => 'weight',
+						'alias' => 'min_weight',
+						'filter' => $weight_query
+					);
+					$required_filters[] = array(
+						'aggregation_type' => 'max',
+						'field' => 'weight',
+						'alias' => 'max_weight',
+						'filter' => $weight_query
+					);
 					break;
 				case self::FILTER_TYPE_QUANTITY:
+					break;
 					if (!Configuration::get('PS_STOCK_MANAGEMENT'))
 					{
 						$required_filters[] = array(
 							'aggregation_type' => 'value_count',
 							'field' => 'quantity',
 							'alias' => 'in_stock',
+							'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
 						);
 						break;
 					}
+
+					$quantity_query = $this->getProductsQueryByFilters($selected_filters, $type);
 
 					$qty_filter = array(
 						'aggregation_type' => 'terms',
 						'field' => 'quantity',
 						'alias' => 'in_stock',
-						'filter' => array(
-							'bool' => array(
-								'should' => array(
-									array(
-										'range' => array(
-											'quantity' => array('gt' => 0)
-										)
-									),
-									array(
-										'term' => array(
-											'out_of_stock' => AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS
-										)
-									)
-								)
+						'filter' => $quantity_query
+					);
+
+					$should = array(
+						array(
+							'range' => array(
+								'quantity' => array('gt' => 0)
+							)
+						),
+						array(
+							'term' => array(
+								'out_of_stock' => AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS
 							)
 						)
 					);
@@ -104,11 +110,13 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
 					//if ordering out of stock products is allowed globally, include products with global oos value
 					if (!$global_oos_deny_orders)
-						$qty_filter['filter']['bool']['should'][] = array(
+						$should[] = array(
 							'term' => array(
 								'out_of_stock' => AbstractFilter::PRODUCT_OOS_USE_GLOBAL
 							)
 						);
+
+					$qty_filter['filter']['bool']['should'] = $should;
 
 					$required_filters[] = $qty_filter;
 
@@ -119,18 +127,16 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 						'aggregation_type' => 'terms',
 						'field' => 'quantity',
 						'alias' => 'out_of_stock',
-						'filter' => array(
+						'filter' => $quantity_query
+					);
+
+					$should = array(
+						array(
 							'bool' => array(
-								'should' => array(
+								'must' => array(
 									array(
-										'bool' => array(
-											'must' => array(
-												array(
-													'range' => array(
-														'quantity' => array('lt' => 1)
-													)
-												)
-											)
+										'range' => array(
+											'quantity' => array('lt' => 1)
 										)
 									)
 								)
@@ -141,7 +147,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 					//if global "deny out of stock orders" setting is enabled, include products that use global oos value
 					if ($global_oos_deny_orders)
 					{
-						$qty_filter['filter']['bool']['should'][0]['bool']['must'][] = array(
+						$should[0]['bool']['must'][] = array(
 							'bool' => array(
 								'should' => array(
 									array(
@@ -161,12 +167,14 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 					else
 					{
 						//include only products that deny orders if out of stock
-						$qty_filter['filter']['bool']['should'][0]['bool']['must'][] = array(
+						$should[0]['bool']['must'][] = array(
 							'term' => array(
 								'out_of_stock' => AbstractFilter::PRODUCT_OOS_DENY_ORDERS
 							)
 						);
 					}
+
+					$qty_filter['filter']['bool']['should'] = $should;
 
 					$required_filters[] = $qty_filter;
 					break;
@@ -174,7 +182,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 					$required_filters[] = array(
 						'aggregation_type' => 'terms',
 						'field' => 'id_manufacturer',
-						'alias' => 'id_manufacturer'
+						'alias' => 'id_manufacturer',
+						'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
 					);
 					break;
 				case self::FILTER_TYPE_ATTRIBUTE_GROUP:
@@ -182,7 +191,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 						$required_filters[] = array(
 							'aggregation_type' => 'terms',
 							'field' => 'attribute_group_'.$value['id_value'],
-							'alias' => 'attribute_group_'.$value['id_value']
+							'alias' => 'attribute_group_'.$value['id_value'],
+							'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
 						);
 					break;
 				case self::FILTER_TYPE_FEATURE:
@@ -190,7 +200,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 						$required_filters[] = array(
 							'aggregation_type' => 'terms',
 							'field' => 'feature_'.$value['id_value'],
-							'alias' => 'feature_'.$value['id_value']
+							'alias' => 'feature_'.$value['id_value'],
+							'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
 						);
 					break;
 			}
@@ -207,12 +218,10 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	public function getProductsBySelectedFilters($selected_filters, $count_only = false)
 	{
 		//building search query for selected filters
-		$query = $this->getProductsQueryByFilters($selected_filters, $filter);
-
-		$this->fixFilterQuery($filter);
+		$query = $this->getProductsQueryByFilters($selected_filters);
 
 		if ($count_only)
-			return AbstractFilter::$search_service->getDocumentsCount('products', $query, $filter);
+			return AbstractFilter::$search_service->getDocumentsCount('products', $query);
 
 		$page = (int)Tools::getValue('p');
 
@@ -270,7 +279,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			$start,
 			$order_by,
 			$order_way,
-			$filter,
+			null,
 			false,
 			$partial_fields
 		);
@@ -315,23 +324,19 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		return isset($product['fields']['data'][0][$field_name]) ? $product['fields']['data'][0][$field_name] : null;
 	}
 
-	//todo get rid of this method
-	public function fixFilterQuery(&$filter_query, $operator = 'and')
-	{
-		if (count($filter_query) < 2)
-		{
-			if (isset($filter_query[0]))
-				$filter_query = $filter_query[0];
-		}
-		else
-			$filter_query = array($operator => $filter_query);
-	}
-
-	public function getProductsQueryByFilters($selected_filters, &$filter_query = null)
+	/**
+	 * @param $selected_filters
+	 * @param array|string $exclude - exclude these filters from query
+	 * @return array
+	 */
+	public function getProductsQueryByFilters($selected_filters, $exclude = array())
 	{
 		//todo finish this method
 		$query = array();
 		$search_values = array();
+
+		if (!is_array($exclude))
+			$exclude = array($exclude);
 
 		$price_counter = 0;
 		$weight_counter = 0;
@@ -344,7 +349,11 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			preg_match('/^(.*[^_0-9])/', $key, $res);
 			$key = $res[1];
 
+			if (in_array($key, $exclude))
+				continue;
+
 			foreach ($filter_values as $value)
+			{
 				switch ($key)
 				{
 					case 'id_feature':
@@ -354,7 +363,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 							break;
 
 						$search_values['id_feature'][] = array(
-							'term' =>  array(
+							'term' => array(
 								'feature_'.$parts[0] => $parts[1]
 							)
 						);
@@ -367,13 +376,14 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 							break;
 
 						$search_values['id_attribute_group'][] = array(
-							'term' =>  array(
+							'term' => array(
 								'attribute_group_'.$parts[0] => $parts[1]
 							)
 						);
 						break;
 
 					case 'category':
+						//todo this is not done yet
 						$search_values['categories'][] = array(
 							'term' => array(
 								'categories' => $value
@@ -396,7 +406,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
 						$global_oos_deny_orders = !Configuration::get('PS_ORDER_OUT_OF_STOCK');
 
-						$search_values['in_stock'] = array(
+						$search_values['in_stock'][] = array(
 							'term' => array(
 								'in_stock_when_global_oos_'.($global_oos_deny_orders ? 'deny' : 'allow').'_orders' => $value
 							)
@@ -438,19 +448,17 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 						$price_counter++;
 						break;
 				}
+			}
 		}
 
 		$query['bool']['must'] = $this->getQueryFromSearchValues($search_values);
 
 		//completing categories query
-		if (isset($search_values['categories']))
-			$filter_query[] = array('or' => $search_values['categories']);
-		else
-			$query['bool']['must'][] = array(
-				'term' => array(
-					'categories' => $this->id_category
-				)
-			);
+		$query['bool']['must'][] = array(
+			'term' => array(
+				'categories' => $this->id_category
+			)
+		);
 
 		return $query;
 	}
@@ -877,14 +885,24 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		if (isset($filter[0]))
 			$filter = $filter[0];
 
+		$out_of_stock = $this->getAggregation('out_of_stock');
+
+		if (is_array($out_of_stock))
+			$out_of_stock = reset($out_of_stock);
+
+		$in_stock = $this->getAggregation('in_stock');
+
+		if (is_array($in_stock))
+			$in_stock = reset($in_stock);
+
 		$quantity_array = array (
 			0 => array(
 				'name' => $this->getModuleInstance()->l('Not available', self::FILENAME),
-				'nbr' => $this->getAggregation('out_of_stock')
+				'nbr' => $out_of_stock
 			),
 			1 => array(
 				'name' => $this->getModuleInstance()->l('In stock', self::FILENAME),
-				'nbr' => $this->getAggregation('in_stock')
+				'nbr' => $in_stock
 			)
 		);
 
@@ -953,14 +971,18 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	{
 		if ($this->filters_products_counts === null)
 		{
-			$selected_filters = $this->getSelectedFilters();
-			$query = $this->getProductsQueryByFilters($selected_filters);
-
 			$query_all = array(
-				'query' => $query,
 				'aggs' => $this->getFiltersProductsCountsAggregationQuery($this->enabled_filters)
 			);
-
+//			unset($query_all['aggs']['condition']['filter']['bool']['must'][1]);
+			unset($query_all['aggs']['condition']['filter']['bool']['must'][2]);
+			unset($query_all['aggs']['condition']['filter']['bool']['must'][3]);
+			unset($query_all['aggs']['id_manufacturer']);
+			unset($query_all['aggs']['min_weight']);
+			unset($query_all['aggs']['max_weight']);
+			unset($query_all['aggs']['price_min_1']);
+			unset($query_all['aggs']['price_max_1']);
+//			d($query_all);
 			$result = AbstractFilter::$search_service->search(
 				'products',
 				$query_all,
@@ -971,52 +993,25 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 				null,
 				true
 			);
-
-			$id_category = Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'));
-
-			$query = AbstractFilter::$search_service->buildSearchQuery('bool_must', array(
-				'term' => array(
-					'categories' => (int)$id_category
-				)
-			));
-
-			//price and weight need a different query because all prices/weights have to be included - not only from filtered products
-			$query_price = array(
-				'query' => $query,
-				'aggs' => $this->getPriceAndWeightFilterProductsCountAggregationQuery()
-			);
-
-			$price_result = AbstractFilter::$search_service->search(
-				'products',
-				$query_price,
-				0,
-				null,
-				null,
-				null,
-				null,
-				true
-			);
+//d($result);
 
 			if (!isset($result['aggregations']))
 				$this->filters_products_counts = array();
 			else
 			{
-				$result['aggregations'] = array_merge($result['aggregations'], $price_result['aggregations']);
 				$aggregations = array();
 
 				foreach ($result['aggregations'] as $alias => $aggregation)
 				{
-					if (isset($aggregation['buckets']) && $aggregation['buckets'])
+					if (isset($aggregation[$alias]['buckets']) && $aggregation[$alias]['buckets'])
 					{
 						$aggregations[$alias] = array();
 
-						foreach ($aggregation['buckets'] as $bucket)
-						{
+						foreach ($aggregation[$alias]['buckets'] as $bucket)
 							$aggregations[$alias][$bucket['key']] = $bucket['doc_count'];
-						}
 					}
-					elseif (isset($aggregation['value']))
-						$aggregations[$alias] = $aggregation['value'];
+					elseif (isset($aggregation[$alias]['value']))
+						$aggregations[$alias] = $aggregation[$alias]['value'];
 					elseif (isset($aggregation['doc_count']))
 						$aggregations[$alias] = $aggregation['doc_count'];
 					else

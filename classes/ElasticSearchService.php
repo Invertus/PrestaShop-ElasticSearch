@@ -528,7 +528,10 @@ class ElasticSearchService extends SearchService
 				$params['sort'] = array($order_by.':'.$order_way);
 
 			if ($aggregation)
+			{
+				$params['search_type'] = 'count';
 				return $this->client->search($params);
+			}
 
 			return $this->client->search($params)['hits']['hits'];   // Execute the search
 		} catch (Exception $e) {
@@ -549,14 +552,10 @@ class ElasticSearchService extends SearchService
 					'filter' => $field['filter']
 				);
 			}
-			else
-			{
-				$aggregation_query[$field['alias']] = array(
-					$field['aggregation_type'] => array(
-						'field' => $field['field']
-					)
-				);
-			}
+
+			$aggregation_query[$field['alias']]['aggs'][$field['alias']][$field['aggregation_type']] = array(
+				'field' => $field['field']
+			);
 		}
 
 		return $aggregation_query;
