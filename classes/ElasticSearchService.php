@@ -606,6 +606,24 @@ class ElasticSearchService extends SearchService
 		$index_params = array();
 
 		$index_params['index'] = $index_name;
+		$index_params['body']['settings']['analysis']['filter']['ngram_filter'] = array(
+			'type' => 'ngram',
+			'min_gram' => 1,
+			'max_gram' => 30
+		);
+		$index_params['body']['settings']['analysis']['analyzer']['index_analyzer'] = array(
+			'type' => 'custom',
+			'tokenizer' => 'standard',
+			'filter' => array(
+				'lowercase',
+				'ngram_filter'
+			)
+		);
+		$index_params['body']['settings']['analysis']['analyzer']['search_analyzer'] = array(
+			'type' => 'custom',
+			'tokenizer' => 'standard',
+			'filter' => 'lowercase'
+		);
 		$index_params['body']['settings']['number_of_shards'] = 1;
 		$index_params['body']['settings']['number_of_replicas'] = 1;
 		$index_params['body']['mappings']['products']['properties']['weight'] = array(
@@ -615,7 +633,9 @@ class ElasticSearchService extends SearchService
 		foreach (Language::getLanguages(false) as $lang)
 		{
 			$index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']] = array(
-				'type' => 'string'
+				'type' => 'string',
+				'index_analyzer' => 'index_analyzer',
+				'search_analyzer' => 'search_analyzer'
 			);
 
 			$index_params['body']['mappings']['products']['properties']['name_'.$lang['id_lang']] = array(
