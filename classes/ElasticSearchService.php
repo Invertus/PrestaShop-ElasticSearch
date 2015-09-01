@@ -430,6 +430,15 @@ class ElasticSearchService extends SearchService
 					'match_all' => array()
 				);
 			default:
+				$term = Tools::strtolower($term);
+				return array (
+					'match_phrase_prefix' => array(
+						$type => array(
+							'query' => pSQL($term),
+							'slop' => 1000
+						)
+					)
+				);
 			case 'products':
 				$term = Tools::strtolower($term);
 				return array (
@@ -606,13 +615,11 @@ class ElasticSearchService extends SearchService
 		foreach (Language::getLanguages(false) as $lang)
 		{
 			$index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']] = array(
-				'type' => 'string',
-				'index' => 'not_analyzed'
+				'type' => 'string'
 			);
 
 			$index_params['body']['mappings']['products']['properties']['name_'.$lang['id_lang']] = array(
-				'type' => 'string',
-				'index' => 'not_analyzed'
+				'type' => 'string'
 			);
 		}
 
