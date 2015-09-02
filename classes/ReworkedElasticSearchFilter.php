@@ -892,16 +892,34 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		if (is_array($in_stock))
 			$in_stock = reset($in_stock);
 
-		$quantity_array = array (
-			0 => array(
+		$quantity_array = array();
+
+		if (!$this->hide_0_values)
+		{
+			$quantity_array[0] = array(
 				'name' => $this->getModuleInstance()->l('Not available', self::FILENAME),
 				'nbr' => $out_of_stock
-			),
-			1 => array(
+			);
+			$quantity_array[1] = array(
 				'name' => $this->getModuleInstance()->l('In stock', self::FILENAME),
 				'nbr' => $in_stock
-			)
-		);
+			);
+		}
+		else
+		{
+			if ($out_of_stock)
+			{
+				$quantity_array[0] = array(
+					'name' => $this->getModuleInstance()->l('Not available', self::FILENAME),
+					'nbr' => $out_of_stock
+				);
+			}
+			if ($in_stock)
+				$quantity_array[1] = array(
+					'name' => $this->getModuleInstance()->l('In stock', self::FILENAME),
+					'nbr' => $in_stock
+				);
+		}
 
 		$selected_filters = $this->getSelectedFilters();
 
@@ -928,9 +946,13 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	 * @param $values array available manufacturer values - ID of manufacturer => name of manufacturer
 	 * @return array product manufacturers filter data to be used in template
 	 */
-	protected function getManufacturerFilter($values)
+	protected function getManufacturerFilter($filter)
 	{
-		// TODO: Implement getManufacturerFilter() method.
+		$manufacturers = $this->getAggregation('id_manufacturer');
+//		if (!isset($selected_filters[$res[1].($id_key ? '_'.$id_key : '')]))
+//			$selected_filters[$res[1].($id_key ? '_'.$id_key : '')] = array();
+//
+//		$selected_filters[$res[1].($id_key ? '_'.$id_key : '')][] = (int)$value;
 	}
 
 	/**
