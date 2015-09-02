@@ -72,7 +72,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 					);
 					break;
 				case self::FILTER_TYPE_QUANTITY:
-					break;
 					if (!Configuration::get('PS_STOCK_MANAGEMENT'))
 					{
 						$required_filters[] = array(
@@ -424,7 +423,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
 					case 'condition':
 						$search_values['condition'][] = array(
-							'match' => array(
+							'term' => array(
 								'condition' => $value
 							)
 						);
@@ -478,8 +477,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			{
 				$query[] = array(
 					'bool' => array(
-						'should' => $value,
-						'minimum_should_match' => 1
+						'should' => $value
 					)
 				);
 			}
@@ -556,8 +554,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 									)
 								)
 							)
-						),
-						'minimum_should_match' => 1
+						)
 					)
 				);
 			}
@@ -974,15 +971,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			$query_all = array(
 				'aggs' => $this->getFiltersProductsCountsAggregationQuery($this->enabled_filters)
 			);
-//			unset($query_all['aggs']['condition']['filter']['bool']['must'][1]);
-			unset($query_all['aggs']['condition']['filter']['bool']['must'][2]);
-			unset($query_all['aggs']['condition']['filter']['bool']['must'][3]);
-			unset($query_all['aggs']['id_manufacturer']);
-			unset($query_all['aggs']['min_weight']);
-			unset($query_all['aggs']['max_weight']);
-			unset($query_all['aggs']['price_min_1']);
-			unset($query_all['aggs']['price_max_1']);
-//			d($query_all);
+
 			$result = AbstractFilter::$search_service->search(
 				'products',
 				$query_all,
@@ -993,7 +982,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 				null,
 				true
 			);
-//d($result);
 
 			if (!isset($result['aggregations']))
 				$this->filters_products_counts = array();
@@ -1003,7 +991,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
 				foreach ($result['aggregations'] as $alias => $aggregation)
 				{
-					if (isset($aggregation[$alias]['buckets']) && $aggregation[$alias]['buckets'])
+					if (isset($aggregation[$alias]['buckets']) && $aggregation[$alias]['buckets'] && !in_array($alias, array('in_stock', 'out_of_stock')))
 					{
 						$aggregations[$alias] = array();
 

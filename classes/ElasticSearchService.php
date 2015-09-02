@@ -388,7 +388,10 @@ class ElasticSearchService extends SearchService
 			//indexing categories if products indexing succeeded
 			return $this->errors ? false : $this->indexAllCategories();
 		} catch (Exception $e) {
-			self::log('Unable to index all products. Message: '.$e->getMessage());
+			if (!($message = $e->getMessage()))
+				$message = $e->getPrevious()->getMessage();
+
+			self::log('Unable to index all products. Error code: '.$e->getCode().'. Message: '.$message);
 			return false;
 		}
 	}
