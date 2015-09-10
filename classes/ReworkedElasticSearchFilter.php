@@ -7,6 +7,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 {
 	const FILENAME = 'ElasticSearchFilter';
 
+	public static $cache = array();
 	public $id_category;
 	public $all_category_products = array();
 	public $price_filter = array();
@@ -691,8 +692,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 		$currency = Context::getContext()->currency;
 
 		$price_array = array(
-			'type_lite' => 'price',
-			'type' => 'price',
+			'type_lite' => self::FILTER_TYPE_PRICE,
+			'type' => self::FILTER_TYPE_PRICE,
 			'id_key' => 0,
 			'name' => $this->getModuleInstance()->l('Price', self::FILENAME),
 			'slider' => true,
@@ -758,8 +759,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			$filter = $filter[0];
 
 		$weight_array = array(
-			'type_lite' => 'weight',
-			'type' => 'weight',
+			'type_lite' => self::FILTER_TYPE_WEIGHT,
+			'type' => self::FILTER_TYPE_WEIGHT,
 			'id_key' => 0,
 			'name' => $this->getModuleInstance()->l('Weight', self::FILENAME),
 			'slider' => true,
@@ -811,8 +812,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			$filter = $filter[0];
 
 		$condition_filter = array(
-			'type_lite' => 'condition',
-			'type' => 'condition',
+			'type_lite' => self::FILTER_TYPE_CONDITION,
+			'type' => self::FILTER_TYPE_CONDITION,
 			'id_key' => 0,
 			'name' => $this->getModuleInstance()->l('Condition', self::FILENAME),
 			'values' => array(),
@@ -820,7 +821,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 			'filter_type' => $filter['filter_type']
 		);
 
-		$aggregation = $this->getAggregation('condition');
+		$aggregation = $this->getAggregation(self::FILTER_TYPE_CONDITION);
 
 		if (!$aggregation)
 			return $condition_filter;
@@ -862,15 +863,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 				$condition_array['refurbished']['checked'] = true;
 		}
 
-		return array(
-			'type_lite' => 'condition',
-			'type' => 'condition',
-			'id_key' => 0,
-			'name' => $this->getModuleInstance()->l('Condition', self::FILENAME),
-			'values' => $condition_array,
-			'filter_show_limit' => $filter['filter_show_limit'],
-			'filter_type' => $filter['filter_type']
-		);
+		$condition_filter['values'] = $condition_array;
+
+		return $condition_filter;
 	}
 
 	/**
@@ -930,8 +925,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
 		if ($quantity_array[0]['nbr'] || $quantity_array[1]['nbr'] || !$this->hide_0_values)
 			return array(
-				'type_lite' => 'quantity',
-				'type' => 'quantity',
+				'type_lite' => self::FILTER_TYPE_QUANTITY,
+				'type' => self::FILTER_TYPE_QUANTITY,
 				'id_key' => 0,
 				'name' => $this->getModuleInstance()->l('Availability', self::FILENAME),
 				'values' => $quantity_array,
@@ -943,16 +938,35 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	}
 
 	/**
-	 * @param $values array available manufacturer values - ID of manufacturer => name of manufacturer
+	 * @param $filter array manufacturers filter data
 	 * @return array product manufacturers filter data to be used in template
 	 */
 	protected function getManufacturerFilter($filter)
 	{
+		if (isset($filter[0]))
+			$filter = $filter[0];
+
 		$manufacturers = $this->getAggregation('id_manufacturer');
-//		if (!isset($selected_filters[$res[1].($id_key ? '_'.$id_key : '')]))
-//			$selected_filters[$res[1].($id_key ? '_'.$id_key : '')] = array();
-//
-//		$selected_filters[$res[1].($id_key ? '_'.$id_key : '')][] = (int)$value;
+		$manufacturers_with_names = $this->getModuleInstance()->getManufacturerNamesByIds(array_keys($manufacturers));
+		$manufacturers_values = array();
+
+		foreach ($manufacturers_with_names as $id_manufacturer => $name)
+		{
+			$manufacturers_values[$id_manufacturer] = array(
+				'name' => $name,
+				'nbr' => $manufacturers[$id_manufacturer]
+			);
+		}
+
+		return array(
+			'type_lite' => self::FILTER_TYPE_MANUFACTURER,
+			'type' => self::FILTER_TYPE_MANUFACTURER,
+			'id_key' => 0,
+			'name' => $this->getModuleInstance()->l('Manufacturer', self::FILENAME),
+			'values' => $manufacturers_values,
+			'filter_show_limit' => $filter['filter_show_limit'],
+			'filter_type' => $filter['filter_type']
+		);
 	}
 
 	/**
@@ -965,12 +979,61 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	}
 
 	/**
-	 * @param $values array available features - IDs of features
+	 * @param $filter array features filter data
 	 * @return array product features filter data to be used in template
 	 */
-	protected function getFeatureFilter($values)
+	protected function getFeatureFilter($filter)
 	{
-		// TODO: Implement getFeatureFilter() method.
+		if (isset($filter[0]))
+			$filter = $filter[0];
+
+		$features = $this->getAggregation('feature_', true);
+		$feature_array = array();
+
+		$features_names = array();
+		$features_values_names = array();
+
+		foreach ($features as $feature)
+			foreach ($feature as $key => $values)
+			{
+				$id_feature = (int)str_replace('feature_', '', $key);
+
+				$features_names[] = $id_feature;
+
+				$feature_array[$id_feature] = array(
+					'type_lite' => self::FILTER_TYPE_FEATURE,
+					'type' => self::FILTER_TYPE_FEATURE,
+					'id_key' => $id_feature,
+					'values' => array(),
+					'name' => '',
+					'filter_show_limit' => $filter['filter_show_limit'],
+					'filter_type' => $filter['filter_type']
+				);
+
+				foreach ($values as $id_feature_value => $nbr)
+				{
+					$features_values_names[] = $id_feature_value;
+
+					$feature_array[$id_feature]['values'][$id_feature_value] = array(
+						'nbr' => (int)$nbr,
+						'name' => ''
+					);
+				}
+			}
+
+		$features_names = $this->getModuleInstance()->getFeaturesNamesByIds($features_names);
+		$features_values_names = $this->getModuleInstance()->getFeaturesValuesNamesByIds($features_values_names);
+
+		//adding names to values
+		foreach ($feature_array as &$feature)
+		{
+			$feature['name'] = isset($features_names[$feature['id_key']]) ? $features_names[$feature['id_key']] : '';
+
+			foreach ($feature['values'] as $id_feature_value => &$fields)
+				$fields['name'] = isset($features_values_names[$id_feature_value]) ? $features_values_names[$id_feature_value] : '';
+		}
+
+		return $feature_array;
 	}
 
 	/**
@@ -1038,13 +1101,31 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 	/**
 	 * Gets aggregation value(s) by given name
 	 * @param $name - aggregation name
-	 * @return int|array
+	 * @param bool $partial_name is the provided name ($name) partial
+	 * @return array|int
 	 */
-	public function getAggregation($name)
+	public function getAggregation($name, $partial_name = false)
 	{
 		$aggregations = $this->getAggregations();
 
-		if (!isset($aggregations[$name]))
+		if ($partial_name)
+		{
+			//caching the result
+			$cache_key = 'aggregation_'.$name;
+
+			if (!isset(self::$cache[$cache_key]))
+			{
+				$result = array();
+				foreach ($aggregations as $key => $aggregation)
+					if (Tools::strpos($key, $name) !== false)
+						$result[] = array($key => $aggregation);
+
+				self::$cache[$cache_key] = $result;
+			}
+
+			return self::$cache[$cache_key];
+		}
+		elseif (!isset($aggregations[$name]))
 			return 0;
 
 		return $aggregations[$name];

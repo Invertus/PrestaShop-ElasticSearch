@@ -83,7 +83,12 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
 			//Merging filters to one array
 			if ($filter)
-				$filters[] = $filter;
+			{
+				if (is_array(reset($filter)))
+					$filters = array_merge($filters, $filter);
+				else
+					$filters[] = $filter;
+			}
 		}
 
 		//adding extra filters

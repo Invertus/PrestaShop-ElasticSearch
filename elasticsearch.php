@@ -850,7 +850,69 @@ p(microtime(true) - $t);
 	public function test()
 	{
 //		$this->deleteAllProducts();
-		$this->createTestProducts();
+//		$this->createTestProducts();
+		$search = $this->getSearchServiceObject();
+		d($search->search('products', $search->buildSearchQuery('all')));
+		die;
+	}
+
+	public function getManufacturerNamesByIds(array $ids)
+	{
+		if (empty($ids))
+			return array();
+
+		$resource = Db::getInstance()->query('
+			SELECT `id_manufacturer`, `name`
+			FROM `'._DB_PREFIX_.'manufacturer`
+			WHERE `id_manufacturer` IN ('.(implode(',', array_map('intval', $ids))).')'
+		);
+
+		$manufacturers = array();
+
+		while ($row = Db::getInstance()->nextRow($resource))
+			$manufacturers[$row['id_manufacturer']] = $row['name'];
+
+		return $manufacturers;
+	}
+
+	public function getFeaturesNamesByIds(array $ids)
+	{
+		if (empty($ids))
+			return array();
+
+		$resource = Db::getInstance()->query('
+			SELECT `id_feature`, `name`
+			FROM `'._DB_PREFIX_.'feature_lang`
+			WHERE `id_feature` IN ('.(implode(',', array_map('intval', $ids))).')
+				AND `id_lang` = "'.(int)$this->context->language->id.'"'
+		);
+
+		$features = array();
+
+		while ($row = Db::getInstance()->nextRow($resource))
+			$features[$row['id_feature']] = $row['name'];
+
+		return $features;
+	}
+
+	public function getFeaturesValuesNamesByIds(array $ids)
+	{
+		if (empty($ids))
+			return array();
+
+		$resource = Db::getInstance()->query('
+			SELECT `id_feature_value`, `value`
+			FROM `'._DB_PREFIX_.'feature_value_lang`
+			WHERE `id_feature_value` IN ('.(implode(',', array_map('intval', $ids))).')
+				AND `id_lang` = "'.(int)$this->context->language->id.'"'
+		);
+
+		$features_values = array();
+
+		while ($row = Db::getInstance()->nextRow($resource))
+			$features_values[$row['id_feature_value']] = $row['value'];
+
+		return $features_values;
 	}
 
 	public function deleteAllProducts()
