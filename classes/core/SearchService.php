@@ -21,102 +21,102 @@ require_once(_ELASTICSEARCH_CORE_DIR_.'AbstractLogger.php');
 
 abstract class SearchService extends Brad\AbstractLogger
 {
-	/* Other search services constants should be added here */
-	const ELASTICSEARCH_INSTANCE = 1;
-	const ELASTICSEARCH_SERVICE_CLASS_NAME = 'ElasticSearchService';
+    /* Other search services constants should be added here */
+    const ELASTICSEARCH_INSTANCE = 1;
+    const ELASTICSEARCH_SERVICE_CLASS_NAME = 'ElasticSearchService';
 
-	public $errors = array();
+    public $errors = array();
 
-	/* Array containing all active instances of search services */
-	protected static $instance = array();
+    /* Array containing all active instances of search services */
+    protected static $instance = array();
 
-	public $client; // Search service client
+    public $client; // Search service client
 
-	public $index_prefix;
-	public $index; // Full index name (prefix + id_shop)
+    public $index_prefix;
+    public $index; // Full index name (prefix + id_shop)
 
-	/**
-	 * Returns search instance
-	 * @param int $type - which instance to use
-	 * @return null|object
-	 */
-	public static function getInstance($type)
-	{
-		if (!isset(self::$instance[$type]))
-		{
-			$class = self::getClass($type);
+    /**
+     * Returns search instance
+     * @param int $type - which instance to use
+     * @return null|object
+     */
+    public static function getInstance($type)
+    {
+        if (!isset(self::$instance[$type]))
+        {
+            $class = self::getClass($type);
 
-			if (!$class)
-			{
-				self::log('Search service class is missing', array('class' => $class));
-				return null;
-			}
+            if (!$class)
+            {
+                self::log('Search service class is missing', array('class' => $class));
+                return null;
+            }
 
-			if (!class_exists($class.'.php'))
-				require_once(_ELASTICSEARCH_CLASSES_DIR_.$class.'.php');
+            if (!class_exists($class.'.php'))
+                require_once(_ELASTICSEARCH_CLASSES_DIR_.$class.'.php');
 
-			self::$instance[$type] = new $class();
-		}
+            self::$instance[$type] = new $class();
+        }
 
-		return self::$instance[$type];
-	}
+        return self::$instance[$type];
+    }
 
-	/**
-	 * Returns class name of search service if it exists
-	 * @param int $type Instance type
-	 * @return bool|string class name or false
-	 */
-	public static function getClass($type)
-	{
-		switch ($type)
-		{
-			case self::ELASTICSEARCH_INSTANCE:
-				if (!file_exists(_ELASTICSEARCH_CLASSES_DIR_.self::ELASTICSEARCH_SERVICE_CLASS_NAME.'.php'))
-					return false;
-				return self::ELASTICSEARCH_SERVICE_CLASS_NAME;
-		}
+    /**
+     * Returns class name of search service if it exists
+     * @param int $type Instance type
+     * @return bool|string class name or false
+     */
+    public static function getClass($type)
+    {
+        switch ($type)
+        {
+            case self::ELASTICSEARCH_INSTANCE:
+                if (!file_exists(_ELASTICSEARCH_CLASSES_DIR_.self::ELASTICSEARCH_SERVICE_CLASS_NAME.'.php'))
+                    return false;
+                return self::ELASTICSEARCH_SERVICE_CLASS_NAME;
+        }
 
-		return false;
-	}
+        return false;
+    }
 
-	/**
-	 * Initialize index name which can be accessed as $this->index
-	 */
-	protected function initIndex()
-	{
-		$this->initIndexPrefix();
+    /**
+     * Initialize index name which can be accessed as $this->index
+     */
+    protected function initIndex()
+    {
+        $this->initIndexPrefix();
 
-		if (!$this->index)
-			$this->index = $this->index_prefix.Context::getContext()->shop->id;
-	}
+        if (!$this->index)
+            $this->index = $this->index_prefix.Context::getContext()->shop->id;
+    }
 
-	abstract protected function initClient();
+    abstract protected function initClient();
 
-	abstract public function testSearchServiceConnection();
+    abstract public function testSearchServiceConnection();
 
-	abstract protected function initIndexPrefix();
+    abstract protected function initIndexPrefix();
 
-	abstract public function getDocumentById($type, $id);
+    abstract public function getDocumentById($type, $id);
 
-	abstract public function createDocument($body, $id, $type);
+    abstract public function createDocument($body, $id, $type);
 
-	abstract public function indexAllProducts($delete_old);
+    abstract public function indexAllProducts($delete_old);
 
-	abstract public function indexAllCategories();
+    abstract public function indexAllCategories();
 
-	abstract public function buildSearchQuery($type, $term);
+    abstract public function buildSearchQuery($type, $term);
 
-	abstract public function deleteDocumentById($id_shop, $id, $type);
+    abstract public function deleteDocumentById($id_shop, $id, $type);
 
-	abstract public function documentExists($id_shop, $id, $type);
+    abstract public function documentExists($id_shop, $id, $type);
 
-	abstract public function search($type, array $query, $pagination, $from, $order_by, $order_way, $filter);
+    abstract public function search($type, array $query, $pagination, $from, $order_by, $order_way, $filter);
 
-	abstract public function getDocumentsCount($type, array $query, $filter = null);
+    abstract public function getDocumentsCount($type, array $query, $filter = null);
 
-	abstract public function indexExists($index_name);
+    abstract public function indexExists($index_name);
 
-	abstract protected function createIndex($index_name);
+    abstract protected function createIndex($index_name);
 
-	abstract public function deleteShopIndex();
+    abstract public function deleteShopIndex();
 }

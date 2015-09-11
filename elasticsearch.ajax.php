@@ -21,33 +21,33 @@ include_once(dirname(__FILE__).'/../../config/config.inc.php');
 include_once(dirname(__FILE__).'/../../init.php');
 
 if (Tools::getValue('token') != Tools::getToken(false))
-	exit;
+    exit;
 
 if (Tools::isSubmit('submitElasticsearchSearch'))
 {
-	$module_instance = Module::getInstanceByName('elasticsearch');
-	$result = $module_instance->submitSearchQuery();
+    $module_instance = Module::getInstanceByName('elasticsearch');
+    $result = $module_instance->submitSearchQuery();
 
-	die(Tools::jsonEncode($result));
+    die(Tools::jsonEncode($result));
 }
 
 if (Tools::isSubmit('submitElasticsearchAjaxSearch'))
 {
-	$module_instance = Module::getInstanceByName('elasticsearch');
-	$result = $module_instance->processAjaxSearch();
+    $module_instance = Module::getInstanceByName('elasticsearch');
+    $result = $module_instance->processAjaxSearch();
 
-	die($result);
+    die($result);
 }
 
 if (Tools::isSubmit('submitElasticsearchFilter'))
 {
-	$module_instance = Module::getInstanceByName('elasticsearch');
+    $module_instance = Module::getInstanceByName('elasticsearch');
 //todo refactor class name
 //	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchService.php');
-	require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
+    require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
 
-	$filter = new ReworkedElasticSearchFilter();
-	$result = $filter->ajaxCall();
+    $filter = new ReworkedElasticSearchFilter();
+    $result = $filter->ajaxCall();
 
-	die(Tools::jsonEncode($result));
+    die(Tools::jsonEncode($result));
 }
