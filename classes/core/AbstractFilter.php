@@ -51,13 +51,11 @@ abstract class AbstractFilter extends Brad\AbstractLogger
         $this->enabled_filters = $this->getEnabledFiltersByCategory($id_category);
         $filters = array();
 
-        foreach ($this->enabled_filters as $type => $enabled_filter)
-        {
+        foreach ($this->enabled_filters as $type => $enabled_filter) {
             $filter = array();
 
             /* Getting filters by types */
-            switch ($type)
-            {
+            switch ($type) {
                 case self::FILTER_TYPE_PRICE:
                     $filter = $this->getPriceFilter($enabled_filter);
                     break;
@@ -82,18 +80,19 @@ abstract class AbstractFilter extends Brad\AbstractLogger
             }
 
             //Merging filters to one array
-            if ($filter)
-            {
-                if (is_array(reset($filter)))
+            if ($filter) {
+                if (is_array(reset($filter))) {
                     $filters = array_merge($filters, $filter);
-                else
+                } else {
                     $filters[] = $filter;
+                }
             }
         }
 
         //adding extra filters
-        if ($extra_filters)
+        if ($extra_filters) {
             $filters = array_merge($filters, $extra_filters);
+        }
 
         $this->sortFilters($filters);
 
@@ -137,7 +136,12 @@ abstract class AbstractFilter extends Brad\AbstractLogger
         $products_per_page_default = (int)Configuration::get('PS_PRODUCTS_PER_PAGE');
 
         $n_array = $products_per_page_default > 0 ?
-            array($products_per_page_default, $products_per_page_default * 2, $products_per_page_default * 3, $products_per_page_default * 5) :
+            array(
+                $products_per_page_default,
+                $products_per_page_default * 2,
+                $products_per_page_default * 3,
+                $products_per_page_default * 5
+            ) :
             array(10, 20, 50);
 
         $products = $this->getProductsBySelectedFilters($this->getSelectedFilters());
@@ -196,8 +200,9 @@ abstract class AbstractFilter extends Brad\AbstractLogger
      */
     public function getFiltersBlock($id_category)
     {
-        if ($this->filters_block === null)
+        if ($this->filters_block === null) {
             $this->filters_block = $this->generateFiltersBlock($id_category);
+        }
 
         return $this->filters_block;
     }
@@ -209,24 +214,29 @@ abstract class AbstractFilter extends Brad\AbstractLogger
         $n = (int)Tools::getValue('n'); // how many products per page
         $p = (int)Tools::getValue('p'); // current page
 
-        if ($n < 1)
+        if ($n < 1) {
             $n = (int)Configuration::get('PS_PRODUCTS_PER_PAGE');
+        }
 
-        if ($p < 1)
+        if ($p < 1) {
             $p = 1;
+        }
 
-        if ($p > ($nb_products / $n))
+        if ($p > ($nb_products / $n)) {
             $p = ceil($nb_products / $n);
+        }
 
         $pages_nb = ceil($nb_products / $n);
         $start = $p - $range;
         $stop = $p + $range;
 
-        if ($start < 1)
+        if ($start < 1) {
             $start = 1;
+        }
 
-        if ($stop > $pages_nb)
+        if ($stop > $pages_nb) {
             $stop = $pages_nb;
+        }
 
         return array(
             'nb_products' => $nb_products,
@@ -242,16 +252,18 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
     public function sanitizeValue($value)
     {
-        if (version_compare(_PS_VERSION_, '1.6.0.7', '>=') === true)
+        if (version_compare(_PS_VERSION_, '1.6.0.7', '>=') === true) {
             return Tools::purifyHTML($value);
+        }
 
         return filter_var($value, FILTER_SANITIZE_STRING);
     }
 
     public function getModuleInstance()
     {
-        if (!$this->module_instance)
+        if (!$this->module_instance) {
             $this->module_instance = Module::getInstanceByName('elasticsearch');
+        }
 
         return $this->module_instance;
     }

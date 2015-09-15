@@ -587,7 +587,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
     public function getEnabledFiltersByCategory($id_category)
     {
         try {
-            $filters = Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS(
+            $filters = Db::getInstance(_PS_USE_SQL_SLAVE_)->query(
                 'SELECT `id_value`, `type`, `position`, `filter_type`, `filter_show_limit`
                 FROM `'._DB_PREFIX_.'elasticsearch_category`
                 WHERE `id_category` = "'.(int)$id_category.'"
@@ -598,15 +598,11 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
             $formatted_filters = array();
 
-            foreach ($filters as $filter) {
-                if (!isset($formatted_filters[$filter['type']])) {
-                    $formatted_filters[$filter['type']] = array();
-                }
-
-                $formatted_filters[$filter['type']][] = array(
-                    'id_value' => $filter['id_value'],
-                    'filter_type' => $filter['filter_type'],
-                    'filter_show_limit' => $filter['filter_show_limit']
+            while ($row = Db::getInstance()->nextRow($filters)) {
+                $formatted_filters[$row['type']][] = array(
+                    'id_value' => $row['id_value'],
+                    'filter_type' => $row['filter_type'],
+                    'filter_show_limit' => $row['filter_show_limit']
                 );
             }
 
@@ -986,6 +982,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             $filter = $filter[0];
         }
 
+        $selected_filters = $this->getSelectedFilters();
         $manufacturers = $this->getAggregation('id_manufacturer');
         $manufacturers_with_names = $this->getModuleInstance()->getManufacturerNamesByIds(array_keys($manufacturers));
         $manufacturers_values = array();
@@ -995,6 +992,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'name' => $name,
                 'nbr' => $manufacturers[$id_manufacturer]
             );
+
+            if (array_search($id_manufacturer, $selected_filters[self::FILTER_TYPE_MANUFACTURER]) !== false)
+                $manufacturers_values[$id_manufacturer]['checked'] = true;
         }
 
         return array(
