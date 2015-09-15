@@ -239,8 +239,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             Tools::getValue(
                 'orderby',
                 isset($order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')])
-                ? $order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')]
-                : null
+                    ? $order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')]
+                    : null
             )
         );
 
@@ -252,8 +252,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             Tools::getValue(
                 'orderway',
                 isset($order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')])
-                ? $order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')]
-                : null
+                    ? $order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')]
+                    : null
             )
         );
 
@@ -325,7 +325,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'available_for_order' => $this->extractProductField($product, 'available_for_order'),
                 'show_price' => $this->extractProductField($product, 'show_price'),
                 'quantity' => $this->extractProductField($product, 'quantity'),
-                'id_product_attribute' =>  $this->extractProductField($product, 'id_combination_default'),
+                'id_product_attribute' => $this->extractProductField($product, 'id_combination_default'),
                 'price' => $this->extractProductField($product, 'price'),
                 'allow_oosp' => $allow_oosp,
                 'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id)
@@ -730,7 +730,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             'slider' => true,
             'max' => '0',
             'min' => null,
-            'values' => array ('1' => 0),
+            'values' => array('1' => 0),
             'unit' => $currency->sign,
             'format' => $currency->format,
             'filter_show_limit' => $filter['filter_show_limit'],
@@ -797,7 +797,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             'slider' => true,
             'max' => '0',
             'min' => null,
-            'values' => array ('1' => 0),
+            'values' => array('1' => 0),
             'unit' => Configuration::get('PS_WEIGHT_UNIT'),
             'format' => 5, // Ex: xxxxx kg
             'filter_show_limit' => $filter['filter_show_limit'],
@@ -993,8 +993,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'nbr' => $manufacturers[$id_manufacturer]
             );
 
-            if (array_search($id_manufacturer, $selected_filters[self::FILTER_TYPE_MANUFACTURER]) !== false)
+            if (array_search($id_manufacturer, $selected_filters[self::FILTER_TYPE_MANUFACTURER]) !== false) {
                 $manufacturers_values[$id_manufacturer]['checked'] = true;
+            }
         }
 
         return array(
@@ -1009,10 +1010,10 @@ class ReworkedElasticSearchFilter extends AbstractFilter
     }
 
     /**
-     * @param $values array available attributes groups values - ID of attribute group => name of attribute group
+     * @param $filter array attribute group filter data
      * @return array product attributes groups filter data to be used in template
      */
-    protected function getAttributeGroupFilter($values)
+    protected function getAttributeGroupFilter($filter)
     {
         // TODO: Implement getAttributeGroupFilter() method.
     }
@@ -1023,39 +1024,47 @@ class ReworkedElasticSearchFilter extends AbstractFilter
      */
     protected function getFeatureFilter($filter)
     {
-        if (isset($filter[0])) {
-            $filter = $filter[0];
+        $formatted_filter = array();
+        foreach ($filter as $filter_row) {
+            $formatted_filter[$filter_row['id_value']] = $filter_row;
         }
 
+        $selected_filters = $this->getSelectedFilters();
         $features = $this->getAggregation('feature_', true);
         $feature_array = array();
 
         $features_names = array();
         $features_values_names = array();
 
-        foreach ($features as $feature) {
-            foreach ($feature as $key => $values) {
-                $id_feature = (int)str_replace('feature_', '', $key);
+        foreach ($features as $feature_title => $values) {
+            $id_feature = (int)str_replace('feature_', '', $feature_title);
+            $features_names[] = $id_feature;
 
-                $features_names[] = $id_feature;
+            $feature_array[$id_feature] = array(
+                'type_lite' => self::FILTER_TYPE_FEATURE,
+                'type' => self::FILTER_TYPE_FEATURE,
+                'id_key' => $id_feature,
+                'values' => array(),
+                'name' => '',
+                'filter_show_limit' => !empty($formatted_filter[$id_feature])
+                    ? $formatted_filter[$id_feature]['filter_show_limit'] : '',
+                'filter_type' => !empty($formatted_filter[$id_feature])
+                    ? $formatted_filter[$id_feature]['filter_type'] : ''
+            );
 
-                $feature_array[$id_feature] = array(
-                    'type_lite' => self::FILTER_TYPE_FEATURE,
-                    'type' => self::FILTER_TYPE_FEATURE,
-                    'id_key' => $id_feature,
-                    'values' => array(),
-                    'name' => '',
-                    'filter_show_limit' => $filter['filter_show_limit'],
-                    'filter_type' => $filter['filter_type']
+            foreach ($values as $id_feature_value => $nbr) {
+                $features_values_names[] = $id_feature_value;
+
+                $feature_array[$id_feature]['values'][$id_feature_value] = array(
+                    'nbr' => (int)$nbr,
+                    'name' => ''
                 );
 
-                foreach ($values as $id_feature_value => $nbr) {
-                    $features_values_names[] = $id_feature_value;
-
-                    $feature_array[$id_feature]['values'][$id_feature_value] = array(
-                        'nbr' => (int)$nbr,
-                        'name' => ''
-                    );
+                if (!empty($selected_filters[self::FILTER_TYPE_FEATURE])
+                    && array_search($id_feature.'_'.$id_feature_value, $selected_filters[self::FILTER_TYPE_FEATURE])
+                    !== false
+                ) {
+                    $feature_array[$id_feature]['values'][$id_feature_value]['checked'] = true;
                 }
             }
         }
@@ -1068,7 +1077,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             $feature['name'] = isset($features_names[$feature['id_key']]) ? $features_names[$feature['id_key']] : '';
 
             foreach ($feature['values'] as $id_feature_value => &$fields) {
-                $fields['name'] = isset($features_values_names[$id_feature_value]) ? $features_values_names[$id_feature_value] : '';
+                $fields['name'] = isset($features_values_names[$id_feature_value])
+                    ? $features_values_names[$id_feature_value]
+                    : '';
             }
         }
 
@@ -1155,7 +1166,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 $result = array();
                 foreach ($aggregations as $key => $aggregation) {
                     if (Tools::strpos($key, $name) !== false) {
-                        $result[] = array($key => $aggregation);
+                        $result[$key] = $aggregation;
                     }
                 }
 
