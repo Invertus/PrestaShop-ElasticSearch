@@ -843,6 +843,13 @@ p(microtime(true) - $t);
 
             return $res;
         } catch (Exception $e) {
+            if (!isset($elasticsearch_filter)) {
+                //@todo rename class
+                require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
+                $elasticsearch_filter = new ReworkedElasticSearchFilter();
+            }
+
+            $elasticsearch_filter->log('Unable to display filter column (hookDisplayLeftColumn). Message: '.$e->getMessage());
             return '';
         }
     }
@@ -856,63 +863,27 @@ p(microtime(true) - $t);
         die;
     }
 
-    public function getManufacturerNamesByIds(array $ids)
+    public function getObjectsNamesByIds(array $ids, $table, $id_column, $name_column = 'name', $use_lang = true)
     {
         if (empty($ids))
             return array();
 
         $resource = Db::getInstance()->query('
-            SELECT `id_manufacturer`, `name`
-            FROM `'._DB_PREFIX_.'manufacturer`
-            WHERE `id_manufacturer` IN ('.(implode(',', array_map('intval', $ids))).')'
+            SELECT `'.bqSQL($id_column).'`, `'.bqSQL($name_column).'`
+            FROM `'._DB_PREFIX_.bqSQL($table).'`
+            WHERE `'.bqSQL($id_column).'` IN ('.(implode(',', array_map('intval', $ids))).')'.
+            ($use_lang
+                ? ' AND `id_lang` = "'.(int)$this->context->language->id.'"'
+                : ''
+            )
         );
 
-        $manufacturers = array();
+        $result = array();
 
         while ($row = Db::getInstance()->nextRow($resource))
-            $manufacturers[$row['id_manufacturer']] = $row['name'];
+            $result[$row[$id_column]] = $row[$name_column];
 
-        return $manufacturers;
-    }
-
-    public function getFeaturesNamesByIds(array $ids)
-    {
-        if (empty($ids))
-            return array();
-
-        $resource = Db::getInstance()->query('
-            SELECT `id_feature`, `name`
-            FROM `'._DB_PREFIX_.'feature_lang`
-            WHERE `id_feature` IN ('.(implode(',', array_map('intval', $ids))).')
-                AND `id_lang` = "'.(int)$this->context->language->id.'"'
-        );
-
-        $features = array();
-
-        while ($row = Db::getInstance()->nextRow($resource))
-            $features[$row['id_feature']] = $row['name'];
-
-        return $features;
-    }
-
-    public function getFeaturesValuesNamesByIds(array $ids)
-    {
-        if (empty($ids))
-            return array();
-
-        $resource = Db::getInstance()->query('
-            SELECT `id_feature_value`, `value`
-            FROM `'._DB_PREFIX_.'feature_value_lang`
-            WHERE `id_feature_value` IN ('.(implode(',', array_map('intval', $ids))).')
-                AND `id_lang` = "'.(int)$this->context->language->id.'"'
-        );
-
-        $features_values = array();
-
-        while ($row = Db::getInstance()->nextRow($resource))
-            $features_values[$row['id_feature_value']] = $row['value'];
-
-        return $features_values;
+        return $result;
     }
 
     public function deleteAllProducts()

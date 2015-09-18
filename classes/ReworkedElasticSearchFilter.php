@@ -984,10 +984,20 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
         $selected_filters = $this->getSelectedFilters();
         $manufacturers = $this->getAggregation('id_manufacturer');
-        $manufacturers_with_names = $this->getModuleInstance()->getManufacturerNamesByIds(array_keys($manufacturers));
+        $manufacturers_with_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            array_keys($manufacturers),
+            'manufacturer',
+            'id_manufacturer',
+            'name',
+            false
+        );
         $manufacturers_values = array();
 
         foreach ($manufacturers_with_names as $id_manufacturer => $name) {
+            if ($manufacturers[$id_manufacturer] == 0 && $this->hide_0_values) {
+                continue;
+            }
+
             $manufacturers_values[$id_manufacturer] = array(
                 'name' => $name,
                 'nbr' => $manufacturers[$id_manufacturer]
@@ -1015,7 +1025,84 @@ class ReworkedElasticSearchFilter extends AbstractFilter
      */
     protected function getAttributeGroupFilter($filter)
     {
-        // TODO: Implement getAttributeGroupFilter() method.
+        $selected_filters = $this->getSelectedFilters();
+        $attributes_array = array();
+        $attributes_groups_names = array();
+        $attributes_names = array();
+
+        foreach ($filter as $attribute_group_filter) {
+            $hide_filter = true; //if all values are empty and hide_0_values is false we hide the filter
+
+            $id_attribute_group = $attribute_group_filter['id_value'];
+            $attributes_groups_names[] = $id_attribute_group;
+
+            $attributes_array[$id_attribute_group] = array(
+                'type_lite' => 'id_attribute_group',
+                'type' => 'id_attribute_group',
+                'id_key' => $id_attribute_group,
+                'name' => '',
+                'is_color_group' => '',
+                'values' => array(),
+                'filter_show_limit' => $attribute_group_filter['filter_show_limit'],
+                'filter_type' => $attribute_group_filter['filter_type']
+            );
+
+            $aggregation = $this->getAggregation('attribute_group_'.$id_attribute_group);
+
+            foreach ($aggregation as $id_attribute => $nbr) {
+                if ($nbr == 0 && $this->hide_0_values) {
+                    continue;
+                }
+
+                $hide_filter = false;
+
+                $attributes_names[] = $id_attribute;
+                $attributes_array[$id_attribute_group]['values'][$id_attribute] = array(
+                    'nbr' => (int)$nbr,
+                    'name' => ''
+                );
+
+                if (!empty($selected_filters[self::FILTER_TYPE_ATTRIBUTE_GROUP])
+                    && array_search($id_attribute_group.'_'.$id_attribute, $selected_filters[self::FILTER_TYPE_ATTRIBUTE_GROUP])
+                    !== false
+                ) {
+                    $attributes_array[$id_attribute_group]['values'][$id_attribute]['checked'] = true;
+                }
+            }
+
+            if ($hide_filter) {
+                unset($attributes_array[$id_attribute_group]);
+                continue;
+            }
+        }
+
+        $attributes_groups_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $attributes_groups_names,
+            'attribute_group_lang',
+            'id_attribute_group'
+        );
+
+        $attributes_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $attributes_names,
+            'attribute_lang',
+            'id_attribute'
+        );
+
+        //adding names to values
+        foreach ($attributes_array as &$attribute_group) {
+            $attribute_group['name'] =
+                isset($attributes_groups_names[$attribute_group['id_key']])
+                    ? $attributes_groups_names[$attribute_group['id_key']]
+                    : '';
+
+            foreach ($attribute_group['values'] as $id_attribute => &$fields) {
+                $fields['name'] = isset($attributes_names[$id_attribute])
+                    ? $attributes_names[$id_attribute]
+                    : '';
+            }
+        }
+
+        return $attributes_array;
     }
 
     /**
@@ -1024,20 +1111,16 @@ class ReworkedElasticSearchFilter extends AbstractFilter
      */
     protected function getFeatureFilter($filter)
     {
-        $formatted_filter = array();
-        foreach ($filter as $filter_row) {
-            $formatted_filter[$filter_row['id_value']] = $filter_row;
-        }
+        $this->formatFilterValues($filter);
 
         $selected_filters = $this->getSelectedFilters();
-        $features = $this->getAggregation('feature_', true);
         $feature_array = array();
 
         $features_names = array();
         $features_values_names = array();
 
-        foreach ($features as $feature_title => $values) {
-            $id_feature = (int)str_replace('feature_', '', $feature_title);
+        foreach ($filter as $id_feature => $feature_filter) {
+            $hide_filter = true;
             $features_names[] = $id_feature;
 
             $feature_array[$id_feature] = array(
@@ -1046,13 +1129,19 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'id_key' => $id_feature,
                 'values' => array(),
                 'name' => '',
-                'filter_show_limit' => !empty($formatted_filter[$id_feature])
-                    ? $formatted_filter[$id_feature]['filter_show_limit'] : '',
-                'filter_type' => !empty($formatted_filter[$id_feature])
-                    ? $formatted_filter[$id_feature]['filter_type'] : ''
+                'filter_show_limit' => $feature_filter['filter_show_limit'],
+                'filter_type' => $feature_filter['filter_type']
             );
 
-            foreach ($values as $id_feature_value => $nbr) {
+            $aggregation = $this->getAggregation('feature_'.$id_feature);
+
+            foreach ($aggregation as $id_feature_value => $nbr) {
+                if ($nbr == 0 && $this->hide_0_values) {
+                    continue;
+                }
+
+                $hide_filter = false;
+
                 $features_values_names[] = $id_feature_value;
 
                 $feature_array[$id_feature]['values'][$id_feature_value] = array(
@@ -1067,10 +1156,24 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                     $feature_array[$id_feature]['values'][$id_feature_value]['checked'] = true;
                 }
             }
+
+            if ($hide_filter) {
+                unset($feature_array[$id_feature]);
+                continue;
+            }
         }
 
-        $features_names = $this->getModuleInstance()->getFeaturesNamesByIds($features_names);
-        $features_values_names = $this->getModuleInstance()->getFeaturesValuesNamesByIds($features_values_names);
+        $features_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $features_names,
+            'feature_lang',
+            'id_feature'
+        );
+        $features_values_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $features_values_names,
+            'feature_value_lang',
+            'id_feature_value',
+            'value'
+        );
 
         //adding names to values
         foreach ($feature_array as &$feature) {
@@ -1093,6 +1196,17 @@ class ReworkedElasticSearchFilter extends AbstractFilter
     protected function getCategoryFilter($values)
     {
         // TODO: Implement getCategoryFilter() method.
+    }
+
+    public function formatFilterValues(&$filter_values)
+    {
+        $formatted_filter = array();
+
+        foreach ($filter_values as $filter_row) {
+            $formatted_filter[$filter_row['id_value']] = $filter_row;
+        }
+
+        $filter_values = $formatted_filter;
     }
 
     /**
@@ -1124,7 +1238,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
                 foreach ($result['aggregations'] as $alias => $aggregation) {
                     if (isset($aggregation[$alias]['buckets'])
-                        && $aggregation[$alias]['buckets']
                         && !in_array($alias, array('in_stock', 'out_of_stock'))
                     ) {
                         $aggregations[$alias] = array();

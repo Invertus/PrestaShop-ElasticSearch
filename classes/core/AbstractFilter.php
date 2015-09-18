@@ -259,6 +259,9 @@ abstract class AbstractFilter extends Brad\AbstractLogger
         return filter_var($value, FILTER_SANITIZE_STRING);
     }
 
+    /**
+     * @return ElasticSearch module object
+     */
     public function getModuleInstance()
     {
         if (!$this->module_instance) {
