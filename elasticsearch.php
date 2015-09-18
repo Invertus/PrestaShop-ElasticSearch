@@ -886,6 +886,54 @@ p(microtime(true) - $t);
         return $result;
     }
 
+    /**
+     * Gets is_color_group paramteter for attributes groups
+     * @param array $ids attributes groups
+     * @return array
+     */
+    public function getIsColorGroups(array $ids)
+    {
+        if (empty($ids))
+            return array();
+
+        $resource = Db::getInstance()->query('
+            SELECT `id_attribute_group`, `is_color_group`
+            FROM `'._DB_PREFIX_.'attribute_group`
+            WHERE `id_attribute_group` IN ('.(implode(',', array_map('intval', $ids))).')'
+        );
+
+        $result = array();
+
+        while ($row = Db::getInstance()->nextRow($resource))
+            $result[$row['id_attribute_group']] = $row['is_color_group'];
+
+        return $result;
+    }
+
+    /**
+     * Gets color codes for attributes
+     * @param array $ids attributes
+     * @return array
+     */
+    public function getAttributesColors(array $ids)
+    {
+        if (empty($ids))
+            return array();
+
+        $resource = Db::getInstance()->query('
+            SELECT `id_attribute`, `color`
+            FROM `'._DB_PREFIX_.'attribute`
+            WHERE `id_attribute` IN ('.(implode(',', array_map('intval', $ids))).')'
+        );
+
+        $result = array();
+
+        while ($row = Db::getInstance()->nextRow($resource))
+            $result[$row['id_attribute']] = $row['color'];
+
+        return $result;
+    }
+
     public function deleteAllProducts()
     {
         $tables = array('product', 'product_shop', 'product_lang', 'category_product', 'product_attribute_combination');

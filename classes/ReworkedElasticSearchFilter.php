@@ -1041,7 +1041,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'type' => 'id_attribute_group',
                 'id_key' => $id_attribute_group,
                 'name' => '',
-                'is_color_group' => '',
                 'values' => array(),
                 'filter_show_limit' => $attribute_group_filter['filter_show_limit'],
                 'filter_type' => $attribute_group_filter['filter_type']
@@ -1076,12 +1075,14 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             }
         }
 
+        $color_groups = $this->getModuleInstance()->getIsColorGroups($attributes_groups_names);
         $attributes_groups_names = $this->getModuleInstance()->getObjectsNamesByIds(
             $attributes_groups_names,
             'attribute_group_lang',
             'id_attribute_group'
         );
 
+        $colors = $this->getModuleInstance()->getAttributesColors($attributes_names);
         $attributes_names = $this->getModuleInstance()->getObjectsNamesByIds(
             $attributes_names,
             'attribute_lang',
@@ -1095,10 +1096,19 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                     ? $attributes_groups_names[$attribute_group['id_key']]
                     : '';
 
+            $attribute_group['is_color_group'] =
+                isset($color_groups[$attribute_group['id_key']])
+                    ? $color_groups[$attribute_group['id_key']]
+                    : 0;
+
             foreach ($attribute_group['values'] as $id_attribute => &$fields) {
                 $fields['name'] = isset($attributes_names[$id_attribute])
                     ? $attributes_names[$id_attribute]
                     : '';
+
+                if (isset($colors[$id_attribute])) {
+                    $fields['color'] = $colors[$id_attribute];
+                }
             }
         }
 
