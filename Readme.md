@@ -77,7 +77,7 @@ ___
  
 If you have any questions do not hesitate to ask. We can also develop custom modules for you or make some core modifications for your PrestaShop web store if needed.
  
-Our company is dedicated to your satisfaction and is always open to your feedback. If you have an issue with our module, please fill in this ** [CONTACT FORM](https://invertus.worketc.com/forms?7)** or contact us at **[help@invertus.eu](mailto:help@invertus.eu?subject=Color%20Picker%20in%20products%20list%20Simple%20support)** and we'll do our best to help you.
+Our company is dedicated to your satisfaction and is always open to your feedback. If you have an issue with our module, please fill in this ** [CONTACT FORM](https://invertus.worketc.com/forms?22)** or contact us at **[help@invertus.eu](mailto:help@invertus.eu?subject=Color%20Picker%20in%20products%20list%20Simple%20support)** and we'll do our best to help you.
  
 We are always happy when we can help our customers!
 
