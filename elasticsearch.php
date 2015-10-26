@@ -858,8 +858,9 @@ p(microtime(true) - $t);
     {
 //		$this->deleteAllProducts();
 //		$this->createTestProducts();
-        $search = $this->getSearchServiceObject();
-        d($search->search('products', $search->buildSearchQuery('all')));
+        $this->createTestFeatures();
+//        $search = $this->getSearchServiceObject();
+//        d($search->search('products', $search->buildSearchQuery('all')));
         die;
     }
 
@@ -942,7 +943,7 @@ p(microtime(true) - $t);
             Db::getInstance()->execute('TRUNCATE TABLE `'._DB_PREFIX_.$table.'`');
     }
 
-    public function createTestProducts($number = 100, $id_shop = 1)
+    public function createTestProducts($number = 8000, $id_shop = 1)
     {
         $p_sql = 'INSERT INTO `'._DB_PREFIX_.'product` (id_product,id_supplier,id_manufacturer,id_category_default,id_shop_default,id_tax_rules_group,
         on_sale,price,wholesale_price,weight,out_of_stock,`active`,redirect_type,`condition`) VALUES ';
@@ -1003,5 +1004,86 @@ p(microtime(true) - $t);
 
         var_dump($res);
         die;
+    }
+
+    public function createTestFeatures($features_nbr = 30, $values_nbr = 300, $id_shop = 1)
+    {
+        $table = 'feature';
+        $f_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'` (id_feature,position) VALUES ';
+        $f_s_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_shop` (id_feature,id_shop) VALUES ';
+        $f_l_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_lang` (id_feature,id_lang,`name`) VALUES ';
+        $f_v_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_value` (id_feature_value,id_feature) VALUES ';
+        $f_vl_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_value_lang` (id_feature_value,id_lang,`value`) VALUES ';
+        $f_p_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_product` (id_feature,id_product,id_feature_value) VALUES ';
+
+        $next_id = (int)(Db::getInstance()->getValue('SELECT MAX(id_feature) FROM `'._DB_PREFIX_.$table.'`')) + 1;
+        $next_id_fv = (int)(Db::getInstance()->getValue('SELECT MAX(id_feature_value) FROM `'._DB_PREFIX_.$table.'_value`')) + 1;
+        $position = 0;
+        $id_lang = 1;
+
+        $names1 = array('Abandoned','Able','Active','Aged','World','System','Computer','Food','Understanding','Blond');
+        $names2 = array('Yes','No','Good','Nice','Colorful','Fun','Happy','Big','Small','Great');
+
+        $f_values = array();
+        $f_s_values = array();
+        $f_l_values = array();
+        $f_v_values = array();
+        $f_vl_values = array();
+        $f_p_values = array();
+        $val_per_feat = ceil($values_nbr / $features_nbr);
+
+        for ($i = 0; $i < $features_nbr; $i++)
+        {
+            $feature_name = $names1[array_rand($names1, 1)];
+
+            $f_values[] = '('.$next_id.','.$position.')';
+            $f_s_values[] = '('.$next_id.','.$id_shop.')';
+            $f_l_values[] = '('.$next_id.','.$id_lang.',"'.$feature_name.'")';
+
+            for ($j = 0; $j < $val_per_feat; $j++)
+            {
+                $products = $this->getRandomProductId(rand(30,70));
+                if (!$products)
+                    return false;
+                $feature_value = $names2[array_rand($names2, 1)];
+                $f_v_values[] = '('.$next_id_fv.','.$next_id.')';
+                $f_vl_values[] = '('.$next_id_fv.','.$id_lang.',"'.$feature_value.'")';
+
+                foreach ($products as $product)
+                    $f_p_values[] = '('.$next_id.','.(int)$product['id_product'].','.$next_id_fv.')';
+
+                $next_id_fv++;
+            }
+
+            $next_id++;
+        }
+
+        $f_sql .= implode(',', $f_values);
+        $f_s_sql .= implode(',', $f_s_values);
+        $f_l_sql .= implode(',', $f_l_values);
+        $f_v_sql .= implode(',', $f_v_values);
+        $f_vl_sql .= implode(',', $f_vl_values);
+        $f_p_sql .= implode(',', $f_p_values);
+
+        Db::getInstance()->execute('START TRANSACTION');
+
+        $res = Db::getInstance()->execute($f_sql);
+        $res &= Db::getInstance()->execute($f_s_sql);
+        $res &= Db::getInstance()->execute($f_l_sql);
+        $res &= Db::getInstance()->execute($f_v_sql);
+        $res &= Db::getInstance()->execute($f_vl_sql);
+        $res &= Db::getInstance()->execute($f_p_sql);
+
+        if ($res)
+            Db::getInstance()->execute('COMMIT');
+        else
+            Db::getInstance()->execute('ROLLBACK');
+
+        var_dump($res);
+    }
+
+    public function getRandomProductId($limit = 1)
+    {
+        return Db::getInstance()->executeS('SELECT id_product FROM `'._DB_PREFIX_.'product` ORDER BY RAND() LIMIT 0, '.(int)$limit);
     }
 }

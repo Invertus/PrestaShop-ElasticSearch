@@ -530,6 +530,8 @@ function reloadElasticsearchContent(params_plus, url_only)
 		cache: false,
 		success: function(result)
 		{
+            if (typeof result.time != 'undefined')
+                console.debug(result.time);
             var $oldCenterColumn = $('#old_center_column');
             if ($oldCenterColumn.length > 0)
             {
