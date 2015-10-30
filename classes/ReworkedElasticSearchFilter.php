@@ -327,6 +327,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'quantity' => $this->extractProductField($product, 'quantity'),
                 'id_product_attribute' => $this->extractProductField($product, 'id_combination_default'),
                 'price' => $this->extractProductField($product, 'price'),
+                'price_tax_exc' => $this->extractProductField($product, 'price'),
                 'allow_oosp' => $allow_oosp,
                 'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id)
             );
@@ -984,6 +985,10 @@ class ReworkedElasticSearchFilter extends AbstractFilter
 
         $selected_filters = $this->getSelectedFilters();
         $manufacturers = $this->getAggregation('id_manufacturer');
+
+        if (!$manufacturers)
+            return array();
+
         $manufacturers_with_names = $this->getModuleInstance()->getObjectsNamesByIds(
             array_keys($manufacturers),
             'manufacturer',
@@ -1047,6 +1052,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             );
 
             $aggregation = $this->getAggregation('attribute_group_'.$id_attribute_group);
+
+            if (!$aggregation)
+                continue;
 
             foreach ($aggregation as $id_attribute => $nbr) {
                 if ($nbr == 0 && $this->hide_0_values) {
@@ -1144,6 +1152,9 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             );
 
             $aggregation = $this->getAggregation('feature_'.$id_feature);
+
+            if (!$aggregation)
+                continue;
 
             foreach ($aggregation as $id_feature_value => $nbr) {
                 if ($nbr == 0 && $this->hide_0_values) {
