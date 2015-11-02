@@ -506,12 +506,17 @@ function reloadElasticsearchContent(params_plus, url_only)
 		});
 	}
 
+    if (typeof params_plus == 'undefined' || !params_plus) {
+        params_plus = '';
+    }
+
     var ajax_call_data;
 
-    if (typeof(url_only) != 'undefined' && url_only)
-        ajax_call_data = params_plus+'&submitElasticsearchFilter=1&token='+static_token;
-    else
-        ajax_call_data = data+params_plus+n+'&submitElasticsearchFilter=1&token='+static_token;
+    if (typeof(url_only) != 'undefined' && url_only) {
+        ajax_call_data = params_plus + '&submitElasticsearchFilter=1&token=' + static_token;
+    } else {
+        ajax_call_data = data + params_plus + n + '&submitElasticsearchFilter=1&token=' + static_token;
+    }
 
 	ajaxQuery = $.ajax(
 	{
