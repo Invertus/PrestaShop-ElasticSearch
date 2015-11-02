@@ -15,6 +15,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
     const FILTER_TYPE_MANUFACTURER = 'manufacturer';
     const FILTER_TYPE_ATTRIBUTE_GROUP = 'id_attribute_group';
     const FILTER_TYPE_FEATURE = 'id_feature';
+    const FILTER_TYPE_CATEGORY = 'category';
 
     const FILTER_STYLE_SLIDER = 0;
     const FILTER_STYLE_INPUTS_AREA = 1;
@@ -76,6 +77,9 @@ abstract class AbstractFilter extends Brad\AbstractLogger
                     break;
                 case self::FILTER_TYPE_FEATURE:
                     $filter = $this->getFeatureFilter($enabled_filter);
+                    break;
+                case self::FILTER_TYPE_CATEGORY:
+                    $filter = $this->getCategoryFilter($enabled_filter);
                     break;
             }
 

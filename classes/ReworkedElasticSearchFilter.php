@@ -204,6 +204,14 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                         );
                     }
                     break;
+                case self::FILTER_TYPE_CATEGORY:
+                    $required_filters[] = array(
+                        'aggregation_type' => 'terms',
+                        'field' => 'categories',
+                        'alias' => 'categories',
+                        'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                    );
+                    break;
             }
         }
 
@@ -348,7 +356,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
      */
     public function getProductsQueryByFilters($selected_filters, $exclude = array())
     {
-        //todo finish this method
         $query = array();
         $search_values = array();
 
@@ -402,7 +409,6 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                         break;
 
                     case 'category':
-                        //todo this is not done yet
                         $search_values['categories'][] = array(
                             'term' => array(
                                 'categories' => $value
@@ -496,7 +502,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
         $query = array();
 
         foreach ($search_values as $key => $value) {
-            if (in_array($key, array('condition', 'manufacturer', 'in_stock', 'id_feature', 'id_attribute_group'))) {
+            if (in_array($key, array('categories', 'condition', 'manufacturer', 'in_stock', 'id_feature', 'id_attribute_group'))) {
                 $query[] = array(
                     'bool' => array(
                         'should' => $value
@@ -1219,12 +1225,92 @@ class ReworkedElasticSearchFilter extends AbstractFilter
     }
 
     /**
-     * @param $values array available categories values - ID of category => name of category
+     * @param $filter array categories filter data
      * @return array categories filter data to be used in template
      */
-    protected function getCategoryFilter($values)
+    protected function getCategoryFilter($filter)
     {
-        // TODO: Implement getCategoryFilter() method.
+        if (isset($filter[0])) {
+            $filter = $filter[0];
+        }
+
+        $aggregation = $this->getAggregation('categories');
+
+        if (empty($aggregation))
+            return array();
+
+        $subcategories = $this->getSubcategories();
+
+        if (empty($subcategories))
+            return array();
+
+        $selected_filters = $this->getSelectedFilters();
+
+        $categories_with_products_count = 0;
+        $values = array();
+
+        foreach ($subcategories as $id_subcategory => $subcategory) {
+            if (isset($aggregation[$id_subcategory])) {
+                // Checks if filter should not be displayed
+                if ($this->hide_0_values && $aggregation[$id_subcategory] < 1) {
+                    continue;
+                }
+
+                $values[$id_subcategory] = array(
+                    'name' => $subcategory['name'],
+                    'nbr' => $aggregation[$id_subcategory]
+                );
+
+                if ($aggregation[$id_subcategory] > 0) {
+                    $categories_with_products_count++;
+                }
+
+                if (isset($selected_filters['category']) && in_array($id_subcategory, $selected_filters['category']))
+                    $values[$id_subcategory]['checked'] = true;
+            }
+        }
+
+        // If there are no categories to display - return empty array
+        if ($this->hide_0_values && !$categories_with_products_count)
+            return array();
+
+        $category_filter = array(
+            'type_lite' => 'category',
+            'type' => 'category',
+            'id_key' => 0,
+            'name' => $this->getModuleInstance()->l('Categories', self::FILENAME),
+            'values' => $values,
+            'filter_show_limit' => $filter['filter_show_limit'],
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
+        );
+
+        return $category_filter;
+    }
+
+    public function getSubcategories()
+    {
+        if (!isset(self::$cache['subcategories_'.$this->id_category])) {
+            $resource = Db::getInstance()->query('
+                SELECT c.`id_category`, cl.`name`
+                FROM `'._DB_PREFIX_.'category` c
+                LEFT JOIN `'._DB_PREFIX_.'category_lang` cl ON c.`id_category` = cl.`id_category`
+                JOIN `'._DB_PREFIX_.'category_shop` cs ON cs.`id_category` = c.`id_category`
+                WHERE cl.`id_lang` = "'.(int)Context::getContext()->language->id.'"
+                    AND cs.`id_shop` = "'.(int)Context::getContext()->shop->id.'"
+                    AND c.`id_parent` = "'.(int)$this->id_category.'"
+            ');
+
+            $subcategories = array();
+
+            while ($row = Db::getInstance()->nextRow($resource)) {
+                $subcategories[$row['id_category']] = $row;
+            }
+
+            self::$cache['subcategories_'.$this->id_category] = $subcategories;
+        }
+
+        return self::$cache['subcategories_'.$this->id_category];
     }
 
     public function formatFilterValues(&$filter_values)
