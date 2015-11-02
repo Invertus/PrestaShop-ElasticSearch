@@ -496,13 +496,6 @@ function reloadElasticsearchContent(params_plus, url_only)
         data += '&n=' + selected_pagination;
     }
 
-	var slideUp = true;
-	if (params_plus == undefined)
-	{
-		params_plus = '';
-		slideUp = false;
-	}
-
 	// Get nb items per page
 	var n = '';
 	if (params_plus)
@@ -638,8 +631,10 @@ function reloadElasticsearchContent(params_plus, url_only)
 
 			lockLocationChecking = true;
 
-			if(slideUp)
-				$.scrollTo('.product_list', 400);
+            $('html, body').animate({
+                scrollTop: $('.product_list').offset().top
+            }, 400);
+
 			updateProductUrl();
 
 			$('.hide-action').each(function() {
