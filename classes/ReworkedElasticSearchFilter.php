@@ -1288,29 +1288,83 @@ class ReworkedElasticSearchFilter extends AbstractFilter
         return $category_filter;
     }
 
-    public function getSubcategories()
+    /**
+     * @param bool|false $all if true, all categories will be returned (to the deepest),
+     * if yes - return categories only from the 1st level
+     * @return mixed
+     */
+    public function getSubcategories($all = false)
     {
-        if (!isset(self::$cache['subcategories_'.$this->id_category])) {
-            $resource = Db::getInstance()->query('
+        if (!isset(self::$cache['subcategories_'.$this->id_category.'_'.(int)$all])) {
+            $subcategories = array();
+
+            if ($all) {
+                if (Group::isFeatureActive()) {
+                    $groups = FrontController::getCurrentCustomerGroups();
+                }
+
+                $categories = Category::getNestedCategories(
+                    $this->id_category,
+                    Context::getContext()->language->id,
+                    true,
+                    isset($groups) ? $groups : null
+                );
+
+                if (isset($categories[$this->id_category]) && !empty($categories[$this->id_category]['children'])) {
+                    $subcategories = $this->getChildrenCategoriesRecursive($categories[$this->id_category]['children']);
+                }
+            } else {
+                $sql_groups_where = '';
+                $sql_groups_join = '';
+                if (Group::isFeatureActive()) {
+                    $sql_groups_join = 'LEFT JOIN `'._DB_PREFIX_.'category_group` cg ON (cg.`id_category` = c.`id_category`)';
+                    $groups = FrontController::getCurrentCustomerGroups();
+                    $sql_groups_where = 'AND cg.`id_group` '.(count($groups) ? 'IN ('.implode(',',
+                                $groups).')' : '='.(int)Group::getCurrent()->id);
+                }
+
+                $resource = Db::getInstance()->query('
                 SELECT c.`id_category`, cl.`name`
                 FROM `'._DB_PREFIX_.'category` c
                 LEFT JOIN `'._DB_PREFIX_.'category_lang` cl ON c.`id_category` = cl.`id_category`
                 JOIN `'._DB_PREFIX_.'category_shop` cs ON cs.`id_category` = c.`id_category`
+                '.$sql_groups_join.'
                 WHERE cl.`id_lang` = "'.(int)Context::getContext()->language->id.'"
                     AND cs.`id_shop` = "'.(int)Context::getContext()->shop->id.'"
                     AND c.`id_parent` = "'.(int)$this->id_category.'"
+                    '.$sql_groups_where.'
             ');
 
-            $subcategories = array();
-
-            while ($row = Db::getInstance()->nextRow($resource)) {
-                $subcategories[$row['id_category']] = $row;
+                while ($row = Db::getInstance()->nextRow($resource)) {
+                    $subcategories[$row['id_category']] = $row;
+                }
             }
 
-            self::$cache['subcategories_'.$this->id_category] = $subcategories;
+            self::$cache['subcategories_'.$this->id_category.'_'.(int)$all] = $subcategories;
         }
 
-        return self::$cache['subcategories_'.$this->id_category];
+        return self::$cache['subcategories_'.$this->id_category.'_'.(int)$all];
+    }
+
+    public function getChildrenCategoriesRecursive($categories)
+    {
+        $subcategories = array();
+
+        foreach ($categories as $category) {
+            if (!empty($category['children'])) {
+                $subcategories = array_merge(
+                    $subcategories,
+                    $this->getChildrenCategoriesRecursive($category['children'])
+                );
+            }
+
+            $subcategories[$category['id_category']] = array(
+                'id_category' => $category['id_category'],
+                'name' => $category['name']
+            );
+        }
+
+        return $subcategories;
     }
 
     public function formatFilterValues(&$filter_values)
