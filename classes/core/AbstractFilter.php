@@ -114,9 +114,14 @@ abstract class AbstractFilter extends Brad\AbstractLogger
         return Context::getContext()->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
     }
 
+    /*
+     * Sorts filters by position ascending
+     */
     private function sortFilters(&$filters)
-    {//todo
-
+    {
+        usort($filters, function($a, $b) {
+            return $a['position'] - $b['position'];
+        });
     }
 
     public function getFilters()

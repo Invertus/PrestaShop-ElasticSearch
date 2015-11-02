@@ -603,7 +603,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 $formatted_filters[$row['type']][] = array(
                     'id_value' => $row['id_value'],
                     'filter_type' => $row['filter_type'],
-                    'filter_show_limit' => $row['filter_show_limit']
+                    'filter_show_limit' => $row['filter_show_limit'],
+                    'position' => $row['position']
                 );
             }
 
@@ -735,7 +736,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             'unit' => $currency->sign,
             'format' => $currency->format,
             'filter_show_limit' => $filter['filter_show_limit'],
-            'filter_type' => $filter['filter_type']
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
 
         //getting min and max prices from aggregations
@@ -802,7 +804,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             'unit' => Configuration::get('PS_WEIGHT_UNIT'),
             'format' => 5, // Ex: xxxxx kg
             'filter_show_limit' => $filter['filter_show_limit'],
-            'filter_type' => $filter['filter_type']
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
 
         //getting min and max weight from aggregations
@@ -850,7 +853,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             'name' => $this->getModuleInstance()->l('Condition', self::FILENAME),
             'values' => array(),
             'filter_show_limit' => $filter['filter_show_limit'],
-            'filter_type' => $filter['filter_type']
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
 
         $aggregation = $this->getAggregation(self::FILTER_TYPE_CONDITION);
@@ -966,7 +970,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'name' => $this->getModuleInstance()->l('Availability', self::FILENAME),
                 'values' => $quantity_array,
                 'filter_show_limit' => $filter['filter_show_limit'],
-                'filter_type' => $filter['filter_type']
+                'filter_type' => $filter['filter_type'],
+                'position' => $filter['position']
             );
         }
 
@@ -1020,7 +1025,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             'name' => $this->getModuleInstance()->l('Manufacturer', self::FILENAME),
             'values' => $manufacturers_values,
             'filter_show_limit' => $filter['filter_show_limit'],
-            'filter_type' => $filter['filter_type']
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
     }
 
@@ -1048,7 +1054,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'name' => '',
                 'values' => array(),
                 'filter_show_limit' => $attribute_group_filter['filter_show_limit'],
-                'filter_type' => $attribute_group_filter['filter_type']
+                'filter_type' => $attribute_group_filter['filter_type'],
+                'position' => $attribute_group_filter['position']
             );
 
             $aggregation = $this->getAggregation('attribute_group_'.$id_attribute_group);
@@ -1148,7 +1155,8 @@ class ReworkedElasticSearchFilter extends AbstractFilter
                 'values' => array(),
                 'name' => '',
                 'filter_show_limit' => $feature_filter['filter_show_limit'],
-                'filter_type' => $feature_filter['filter_type']
+                'filter_type' => $feature_filter['filter_type'],
+                'position' => $feature_filter['position']
             );
 
             $aggregation = $this->getAggregation('feature_'.$id_feature);
