@@ -962,7 +962,7 @@ class ReworkedElasticSearchFilter extends AbstractFilter
             }
         }
 
-        if ($quantity_array[0]['nbr'] || $quantity_array[1]['nbr'] || !$this->hide_0_values) {
+        if (!empty($quantity_array[0]['nbr']) || !empty($quantity_array[1]['nbr']) || !$this->hide_0_values) {
             return array(
                 'type_lite' => self::FILTER_TYPE_QUANTITY,
                 'type' => self::FILTER_TYPE_QUANTITY,
