@@ -586,6 +586,8 @@ class ElasticSearchService extends SearchService
             return false;
         }
 
+        sleep(1);
+
         return true;
     }
 
