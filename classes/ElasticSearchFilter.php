@@ -1,216 +1,821 @@
 <?php
-/**
- * 2015 Invertus, UAB
- *
- * NOTICE OF LICENSE
- *
- * This file is proprietary and can not be copied and/or distributed
- * without the express permission of INVERTUS, UAB
- *
- *  @author    INVERTUS, UAB www.invertus.eu <help@invertus.eu>
- *  @copyright 2015 INVERTUS, UAB
- *  @license   --
- *  International Registered Trademark & Property of INVERTUS, UAB
- */
 
-class ElasticSearchFilter extends ElasticSearchService
+require_once(_ELASTICSEARCH_CORE_DIR_.'AbstractFilter.php');
+
+class ElasticSearchFilter extends AbstractFilter
 {
     const FILENAME = 'ElasticSearchFilter';
 
-    private $context = null;
-    private $page = 1;
-    private $all_products;
-    private $filtered_products;
-    private $filtered_products_query_params;
-    private $filter_query;
+    public static $cache = array();
+    public $id_category;
+    public $all_category_products = array();
+    public $price_filter = array();
+    public $weight_filter = array();
+    private $selected_filters;
 
-    public function __construct($module_name = 'elasticsearch')
+    public function __construct()
     {
-        $this->context = Context::getContext();
-
-        if ((int)Tools::getValue('p'))
-            $this->page = (int)Tools::getValue('p');
-
-        parent::__construct($module_name);
+        parent::__construct(SearchService::ELASTICSEARCH_INSTANCE);
+        $this->id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category'));
     }
 
-    public function generateFiltersBlock($selected_filters)
+    public function getFiltersProductsCountsAggregationQuery($enabled_filters)
     {
-        if ($filter_block = $this->getFilterBlock($selected_filters))
-        {
-            if ($filter_block['nbr_filterBlocks'] == 0)
-                return false;
+        $selected_filters = $this->getSelectedFilters();
+        $id_currency = Context::getContext()->currency->id;
+        $required_filters = array();
 
-            $translate = array();
-            $translate['price'] = $this->module_instance->l('price', self::FILENAME);
-            $translate['weight'] = $this->module_instance->l('weight', self::FILENAME);
+        foreach ($enabled_filters as $type => $enabled_filter) {
+            switch ($type) {
+                default:
+                    $required_filters[] = array(
+                        'aggregation_type' => 'terms',
+                        'field' => $type,
+                        'alias' => $type,
+                        'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                    );
+                    break;
+                case self::FILTER_TYPE_PRICE:
+                    if (!isset($price_query)) {
+                        $price_query = $this->getProductsQueryByFilters($selected_filters, $type);
+                    }
 
-            $this->context->smarty->assign($filter_block);
-            $this->context->smarty->assign(array(
-                'hide_0_values' => Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'),
-                'elasticsearchSliderName' => $translate,
-                'col_img_dir' => _PS_COL_IMG_DIR_
-            ));
-            return $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/column.tpl');
+                    $required_filters[] = array(
+                        'aggregation_type' => 'min',
+                        'field' => 'price_min_'.$id_currency,
+                        'alias' => 'price_min_'.$id_currency,
+                        'filter' => $price_query
+                    );
+                    $required_filters[] = array(
+                        'aggregation_type' => 'max',
+                        'field' => 'price_max_'.$id_currency,
+                        'alias' => 'price_max_'.$id_currency,
+                        'filter' => $price_query
+                    );
+                    break;
+                case self::FILTER_TYPE_WEIGHT:
+                    if (!isset($weight_query)) {
+                        $weight_query = $this->getProductsQueryByFilters($selected_filters, $type);
+                    }
+
+                    $required_filters[] = array(
+                        'aggregation_type' => 'min',
+                        'field' => 'weight',
+                        'alias' => 'min_weight',
+                        'filter' => $weight_query
+                    );
+                    $required_filters[] = array(
+                        'aggregation_type' => 'max',
+                        'field' => 'weight',
+                        'alias' => 'max_weight',
+                        'filter' => $weight_query
+                    );
+                    break;
+                case self::FILTER_TYPE_QUANTITY:
+                    if (!Configuration::get('PS_STOCK_MANAGEMENT')) {
+                        $required_filters[] = array(
+                            'aggregation_type' => 'value_count',
+                            'field' => 'quantity',
+                            'alias' => 'in_stock',
+                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                        );
+                        break;
+                    }
+
+                    $quantity_query = $this->getProductsQueryByFilters($selected_filters, $type);
+
+                    $qty_filter = array(
+                        'aggregation_type' => 'terms',
+                        'field' => 'quantity',
+                        'alias' => 'in_stock',
+                        'filter' => $quantity_query
+                    );
+
+                    $should = array(
+                        array(
+                            'range' => array(
+                                'quantity' => array('gt' => 0)
+                            )
+                        ),
+                        array(
+                            'term' => array(
+                                'out_of_stock' => AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS
+                            )
+                        )
+                    );
+
+                    $global_oos_deny_orders = !Configuration::get('PS_ORDER_OUT_OF_STOCK');
+
+                    //if ordering out of stock products is allowed globally, include products with global oos value
+                    if (!$global_oos_deny_orders) {
+                        $should[] = array(
+                            'term' => array(
+                                'out_of_stock' => AbstractFilter::PRODUCT_OOS_USE_GLOBAL
+                            )
+                        );
+                    }
+
+                    $qty_filter['filter']['bool']['should'] = $should;
+
+                    $required_filters[] = $qty_filter;
+
+                    //Start building out of stock query
+
+                    //include products with quantity lower than 1
+                    $qty_filter = array(
+                        'aggregation_type' => 'terms',
+                        'field' => 'quantity',
+                        'alias' => 'out_of_stock',
+                        'filter' => $quantity_query
+                    );
+
+                    $should = array(
+                        array(
+                            'bool' => array(
+                                'must' => array(
+                                    array(
+                                        'range' => array(
+                                            'quantity' => array('lt' => 1)
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    );
+
+                    //if global "deny out of stock orders" setting is enabled,
+                    // include products that use global oos value
+                    if ($global_oos_deny_orders) {
+                        $should[0]['bool']['must'][] = array(
+                            'bool' => array(
+                                'should' => array(
+                                    array(
+                                        'term' => array(
+                                            'out_of_stock' => AbstractFilter::PRODUCT_OOS_USE_GLOBAL
+                                        )
+                                    ),
+                                    array(
+                                        'term' => array(
+                                            'out_of_stock' => AbstractFilter::PRODUCT_OOS_DENY_ORDERS
+                                        )
+                                    )
+                                )
+                            )
+                        );
+                    } else {
+                        //include only products that deny orders if out of stock
+                        $should[0]['bool']['must'][] = array(
+                            'term' => array(
+                                'out_of_stock' => AbstractFilter::PRODUCT_OOS_DENY_ORDERS
+                            )
+                        );
+                    }
+
+                    $qty_filter['filter']['bool']['should'] = $should;
+
+                    $required_filters[] = $qty_filter;
+                    break;
+                case self::FILTER_TYPE_MANUFACTURER:
+                    $required_filters[] = array(
+                        'aggregation_type' => 'terms',
+                        'field' => 'id_manufacturer',
+                        'alias' => 'id_manufacturer',
+                        'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                    );
+                    break;
+                case self::FILTER_TYPE_ATTRIBUTE_GROUP:
+                    foreach ($enabled_filter as $value) {
+                        $required_filters[] = array(
+                            'aggregation_type' => 'terms',
+                            'field' => 'attribute_group_'.$value['id_value'],
+                            'alias' => 'attribute_group_'.$value['id_value'],
+                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                        );
+                    }
+                    break;
+                case self::FILTER_TYPE_FEATURE:
+                    foreach ($enabled_filter as $value) {
+                        $required_filters[] = array(
+                            'aggregation_type' => 'terms',
+                            'field' => 'feature_'.$value['id_value'],
+                            'alias' => 'feature_'.$value['id_value'],
+                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                        );
+                    }
+                    break;
+                case self::FILTER_TYPE_CATEGORY:
+                    $required_filters[] = array(
+                        'aggregation_type' => 'terms',
+                        'field' => 'categories',
+                        'alias' => 'categories',
+                        'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                    );
+                    break;
+            }
         }
 
-        return false;
+        return AbstractFilter::$search_service->getAggregationQuery($required_filters);
     }
 
-    public function getSelectedFilters()
+    /**
+     * @param $selected_filters array selected filters
+     * @param bool $count_only return only number of results?
+     * @return array|int array with products data | number of products
+     */
+    public function getProductsBySelectedFilters($selected_filters, $count_only = false)
     {
-        $home_category = Configuration::get('PS_HOME_CATEGORY');
-        $id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
+        //building search query for selected filters
+        $query = $this->getProductsQueryByFilters($selected_filters);
 
-        if ($id_category == $home_category)
-            return null;
+        if ($count_only) {
+            return AbstractFilter::$search_service->getDocumentsCount('products', $query);
+        }
 
-        /* Analyze all the filters selected by the user and store them into a tab */
-        $selected_filters = array('category' => array(), 'manufacturer' => array(), 'quantity' => array(), 'condition' => array());
+        $page = (int)Tools::getValue('p');
 
-        foreach ($_GET as $key => $value)
-            if (Tools::substr($key, 0, 14) == 'elasticsearch_')
-            {
-                preg_match('/^(.*)_([0-9]+|new|used|refurbished|slider)$/', Tools::substr($key, 14, Tools::strlen($key) - 14), $res);
-                if (isset($res[1]))
-                {
-                    $tmp_tab = explode('_', $this->filterVar($value));
-                    $value = $this->filterVar($tmp_tab[0]);
-                    $id_key = false;
+        if ($page < 1) {
+            $page = 1;
+        }
 
-                    if (isset($tmp_tab[1]))
-                        $id_key = $tmp_tab[1];
+        $pagination = (int)Tools::getValue('n');
+        $start = ($page - 1) * $pagination;
+        $order_by_values = array(0 => 'name', 1 => 'price', 6 => 'quantity', 7 => 'reference');
+        $order_way_values = array(0 => 'asc', 1 => 'desc');
 
-                    if ($res[1] == 'condition' && in_array($value, array('new', 'used', 'refurbished')))
-                        $selected_filters['condition'][] = $value;
-                    else if ($res[1] == 'quantity' && (!$value || $value == 1))
-                        $selected_filters['quantity'][] = $value;
-                    else if (in_array($res[1], array('category', 'manufacturer')))
-                    {
-                        if (!isset($selected_filters[$res[1].($id_key ? '_'.$id_key : '')]))
-                            $selected_filters[$res[1].($id_key ? '_'.$id_key : '')] = array();
-
-                        $selected_filters[$res[1].($id_key ? '_'.$id_key : '')][] = (int)$value;
-                    }
-                    else if (in_array($res[1], array('id_attribute_group', 'id_feature')))
-                    {
-                        if (!isset($selected_filters[$res[1]]))
-                            $selected_filters[$res[1]] = array();
-                        $selected_filters[$res[1]][(int)$value] = $id_key.'_'.(int)$value;
-                    }
-                    else if ($res[1] == 'weight')
-                        $selected_filters[$res[1]] = $tmp_tab;
-                    else if ($res[1] == 'price')
-                        $selected_filters[$res[1]] = $tmp_tab;
-                }
-            }
-
-        return $selected_filters;
-    }
-
-    public function searchChildCategories($parent_category)
-    {
-        $filter_query = array(
-            'and' => array(
-                array(
-                    'range' => array(
-                        'nleft' => array(
-                            'gt' => $parent_category['_source']['nleft']
-                        )
-                    )
-                ),
-                array(
-                    'range' => array(
-                        'nright' => array(
-                            'lt' => $parent_category['_source']['nright']
-                        )
-                    )
-                ),
+        $order_by = Tools::strtolower(
+            Tools::getValue(
+                'orderby',
+                isset($order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')])
+                    ? $order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')]
+                    : null
             )
         );
 
-        if (!Configuration::get('ELASTICSEARCH_FULL_TREE'))
-            $filter_query['and'][1]['range']['level_depth']['lt'] = $parent_category['_source']['level_depth'] + 2;
-        elseif ($depth = Configuration::get('ELASTICSEARCH_CATEGORY_DEPTH'))
-            $filter_query['and'][1]['range']['level_depth']['lt'] = $parent_category['_source']['level_depth'] + 1 + (int)$depth;
-
-        $n_cat = $this->getDocumentsCount('categories', array(), $filter_query);
-
-        return $n_cat ? $this->search('categories', array(), $n_cat, 0, null, null, $filter_query) : array();
-    }
-
-    public function fixFilterQuery(&$filter_query, $operator = 'and')
-    {
-        if (count($filter_query) < 2)
-        {
-            if (isset($filter_query[0]))
-                $filter_query = $filter_query[0];
+        if ($order_by && !in_array($order_by, $order_by_values)) {
+            $order_by = null;
         }
-        else
-            $filter_query = array($operator => $filter_query);
-    }
 
-    public function getPriceFilter($filter)
-    {
-        $currency = $this->context->currency;
-
-        $price_array = array(
-            'type_lite' => 'price',
-            'type' => 'price',
-            'id_key' => 0,
-            'name' => $this->module_instance->l('Price', self::FILENAME),
-            'slider' => true,
-            'max' => '0',
-            'min' => null,
-            'values' => array ('1' => 0),
-            'unit' => $currency->sign,
-            'format' => $currency->format,
-            'filter_show_limit' => $filter['filter_show_limit'],
-            'filter_type' => $filter['filter_type']
+        $order_way = Tools::strtolower(
+            Tools::getValue(
+                'orderway',
+                isset($order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')])
+                    ? $order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')]
+                    : null
+            )
         );
 
-        if ($this->all_products)
-            foreach ($this->all_products as $product)
-            {
-                if (is_null($price_array['min']))
-                {
-                    $price_array['min'] = $product['_source']['price_min_'.$currency->id];
-                    $price_array['values'][0] = $product['_source']['price_min_'.$currency->id];
-                }
-                else if ($price_array['min'] > $product['_source']['price_min_'.$currency->id])
-                {
-                    $price_array['min'] = $product['_source']['price_min_'.$currency->id];
-                    $price_array['values'][0] = $product['_source']['price_min_'.$currency->id];
-                }
+        if ($order_by == 'name') {
+            $order_by .= '_'.(int)Context::getContext()->language->id;
+        }
 
-                if ($price_array['max'] < $product['_source']['price_max_'.$currency->id])
-                {
-                    $price_array['max'] = $product['_source']['price_max_'.$currency->id];
-                    $price_array['values'][1] = $product['_source']['price_max_'.$currency->id];
+        $required_fields = array(
+            'out_of_stock',
+            'id_category_default',
+            'link_rewrite_'.Context::getContext()->language->id,
+            'default_category_link_rewrite_'.Context::getContext()->language->id,
+            'link_'.Context::getContext()->language->id,
+            'name_'.Context::getContext()->language->id,
+            'description_short_'.Context::getContext()->language->id,
+            'description_'.Context::getContext()->language->id,
+            'ean13',
+            'id_image',
+            'customizable',
+            'minimal_quantity',
+            'available_for_order',
+            'show_price',
+            'price',
+            'quantity',
+            'id_combination_default'
+        );
+
+        $partial_fields = $this->getPartialFields($required_fields);
+
+        $products = AbstractFilter::$search_service->search(
+            'products',
+            $query,
+            $pagination ? $pagination : null,
+            $start,
+            $order_by,
+            $order_way,
+            null,
+            false,
+            $partial_fields
+        );
+
+        $products_data = array();
+
+        $global_allow_oosp = (int)Configuration::get('PS_ORDER_OUT_OF_STOCK');
+
+        foreach ($products as $product) {
+            $allow_oosp = $this->extractProductField($product, 'out_of_stock');
+            $allow_oosp =
+                $allow_oosp == AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS ||
+                ($allow_oosp == AbstractFilter::PRODUCT_OOS_USE_GLOBAL && $global_allow_oosp);
+
+            $products_data[] = array(
+                'id_product' => $product['_id'],
+                'out_of_stock' => $this->extractProductField($product, 'out_of_stock'),
+                'id_category_default' => $this->extractProductField($product, 'id_category_default'),
+                'link_rewrite' => $this->extractProductField(
+                    $product,
+                    'link_rewrite_'.Context::getContext()->language->id
+                ),
+                'name' => $this->extractProductField($product, 'name_'.Context::getContext()->language->id),
+                'description_short' => $this->extractProductField(
+                    $product,
+                    'description_short_'.Context::getContext()->language->id
+                ),
+                'ean13' => $this->extractProductField($product, 'ean13'),
+                'id_image' => $this->extractProductField($product, 'id_image'),
+                'customizable' => $this->extractProductField($product, 'customizable'),
+                'minimal_quantity' => $this->extractProductField($product, 'minimal_quantity'),
+                'available_for_order' => $this->extractProductField($product, 'available_for_order'),
+                'show_price' => $this->extractProductField($product, 'show_price'),
+                'quantity' => $this->extractProductField($product, 'quantity'),
+                'id_product_attribute' => $this->extractProductField($product, 'id_combination_default'),
+                'price' => $this->extractProductField($product, 'price'),
+                'price_tax_exc' => $this->extractProductField($product, 'price'),
+                'allow_oosp' => $allow_oosp,
+                'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id)
+            );
+        }
+
+        return $products_data;
+    }
+
+    public function extractProductField($product, $field_name)
+    {
+        return isset($product['fields']['data'][0][$field_name]) ? $product['fields']['data'][0][$field_name] : null;
+    }
+
+    /**
+     * @param $selected_filters
+     * @param array|string $exclude - exclude these filters from query
+     * @return array
+     */
+    public function getProductsQueryByFilters($selected_filters, $exclude = array())
+    {
+        $query = array();
+        $search_values = array();
+
+        if (!is_array($exclude)) {
+            $exclude = array($exclude);
+        }
+
+        $price_counter = 0;
+        $weight_counter = 0;
+
+        foreach ($selected_filters as $key => $filter_values) {
+            if (!count($filter_values)) {
+                continue;
+            }
+
+            preg_match('/^(.*[^_0-9])/', $key, $res);
+            $key = $res[1];
+
+            if (in_array($key, $exclude)) {
+                continue;
+            }
+
+            foreach ($filter_values as $value) {
+                switch ($key) {
+                    case 'id_feature':
+                        $parts = explode('_', $value);
+
+                        if (count($parts) != 2) {
+                            break;
+                        }
+
+                        $search_values['id_feature'][] = array(
+                            'term' => array(
+                                'feature_'.$parts[0] => $parts[1]
+                            )
+                        );
+                        break;
+
+                    case 'id_attribute_group':
+                        $parts = explode('_', $value);
+
+                        if (count($parts) != 2) {
+                            break;
+                        }
+
+                        $search_values['id_attribute_group'][] = array(
+                            'term' => array(
+                                'attribute_group_'.$parts[0] => $parts[1]
+                            )
+                        );
+                        break;
+
+                    case 'category':
+                        $search_values['categories'][] = array(
+                            'term' => array(
+                                'categories' => $value
+                            )
+                        );
+                        break;
+
+                    case 'quantity':
+                        //If in_stock was already processed it means
+                        // that both "In stock" and "Not available" values are selected in filter
+                        //in this case we do not need to add quantity filter at all -
+                        // need to remove previously set filter.
+                        if (isset($search_values['in_stock'])) {
+                            unset($search_values['in_stock']);
+                            break;
+                        }
+
+                        //if stock management is disabled all products are available
+                        if (!Configuration::get('PS_STOCK_MANAGEMENT')) {
+                            break;
+                        }
+
+                        $global_oos_deny_orders = !Configuration::get('PS_ORDER_OUT_OF_STOCK');
+
+                        $search_values['in_stock'][] = array(
+                            'term' => array(
+                                'in_stock_when_global_oos_'.($global_oos_deny_orders ? 'deny' : 'allow').'_orders' => $value
+                            )
+                        );
+
+                        break;
+
+                    case 'manufacturer':
+                        $search_values['manufacturer'][] = array(
+                            'term' => array(
+                                'id_manufacturer' => $value
+                            )
+                        );
+                        break;
+
+                    case 'condition':
+                        $search_values['condition'][] = array(
+                            'term' => array(
+                                'condition' => $value
+                            )
+                        );
+                        break;
+
+                    case 'weight':
+                        if ($weight_counter == 0) {
+                            $search_values['weight']['gte'] = $value;
+                        } elseif ($weight_counter == 1) {
+                            $search_values['weight']['lte'] = $value;
+                        }
+
+                        $weight_counter++;
+                        break;
+
+                    case 'price':
+                        if ($price_counter == 0) {
+                            $search_values['price']['gte'] = (int)$value;
+                        } elseif ($price_counter == 1) {
+                            $search_values['price']['lte'] = ceil($value);
+                        }
+
+                        $price_counter++;
+                        break;
+                }
+            }
+        }
+
+        $query['bool']['must'] = $this->getQueryFromSearchValues($search_values);
+
+        //completing categories query
+        $query['bool']['must'][] = $this->getCurrentCategoryQuery();
+
+        return $query;
+    }
+
+    /**
+     * Gets ElasticSearch query for current category. If full tree setting is enabled, includes
+     * subcategories in query too.
+     * @return array query for category/ies
+     */
+    public function getCurrentCategoryQuery()
+    {
+        if (!$this->full_tree) {
+            return array(
+                'term' => array(
+                    'categories' => $this->id_category
+                )
+            );
+        }
+
+        $subcategories = $this->getSubcategories(true);
+
+        if ($subcategories) {
+            $query = array(
+                'bool' => array(
+                    'should' => array()
+                )
+            );
+
+            foreach ($subcategories as $subcategory) {
+                $query['bool']['should'][] = array(
+                    'term' => array(
+                        'categories' => $subcategory['id_category']
+                    )
+                );
+            }
+
+        } else {
+            $query = array(
+                'term' => array(
+                    'categories' => $this->id_category
+                )
+            );
+        }
+
+        return $query;
+    }
+
+    /**
+     * Returns formatted query to use in ElasticSearch requests
+     * @param $search_values array values that should be included in search query
+     * @return array
+     */
+    public function getQueryFromSearchValues(array $search_values)
+    {
+        $query = array();
+
+        foreach ($search_values as $key => $value) {
+            if (in_array($key, array('categories', 'condition', 'manufacturer', 'in_stock', 'id_feature', 'id_attribute_group'))) {
+                $query[] = array(
+                    'bool' => array(
+                        'should' => $value
+                    )
+                );
+            } elseif ($key == 'weight') {
+                $query[] = array(
+                    'range' => array(
+                        'weight' => $value
+                    )
+                );
+            } elseif ($key == 'price') {
+                $query[] = array(
+                    'bool' => array(
+                        'should' => array(
+                            array(
+                                'bool' => array(
+                                    'must' => array(
+                                        array(
+                                            'range' => array(
+                                                'price_min_'.(int)Context::getContext()->currency->id => array(
+                                                    'gte' => $value['gte']
+                                                )
+                                            )
+                                        ),
+                                        array(
+                                            'range' => array(
+                                                'price_max_'.(int)Context::getContext()->currency->id => array(
+                                                    'lte' => $value['lte']
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            ),
+                            array(
+                                'bool' => array(
+                                    'must' => array(
+                                        array(
+                                            'range' => array(
+                                                'price_min_'.(int)Context::getContext()->currency->id => array(
+                                                    'lt' => $value['gte']
+                                                )
+                                            )
+                                        ),
+                                        array(
+                                            'range' => array(
+                                                'price_max_'.(int)Context::getContext()->currency->id => array(
+                                                    'gt' => $value['gte']
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            ),
+                            array(
+                                'bool' => array(
+                                    'must' => array(
+                                        array(
+                                            'range' => array(
+                                                'price_min_'.(int)Context::getContext()->currency->id => array(
+                                                    'lt' => $value['lte']
+                                                )
+                                            )
+                                        ),
+                                        array(
+                                            'range' => array(
+                                                'price_max_'.(int)Context::getContext()->currency->id => array(
+                                                    'gt' => $value['lte']
+                                                )
+                                            )
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                );
+            }
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param $id_category int category ID
+     * @return array enabled filters for given category
+     */
+    public function getEnabledFiltersByCategory($id_category)
+    {
+        try {
+            $filters = Db::getInstance(_PS_USE_SQL_SLAVE_)->query(
+                'SELECT `id_value`, `type`, `position`, `filter_type`, `filter_show_limit`
+                FROM `'._DB_PREFIX_.'elasticsearch_category`
+                WHERE `id_category` = "'.(int)$id_category.'"
+                    AND `id_shop` = "'.(int)Context::getContext()->shop->id.'"
+                GROUP BY `type`, `id_value`
+                ORDER BY `position` ASC'
+            );
+
+            $formatted_filters = array();
+
+            while ($row = Db::getInstance()->nextRow($filters)) {
+                $formatted_filters[$row['type']][] = array(
+                    'id_value' => $row['id_value'],
+                    'filter_type' => $row['filter_type'],
+                    'filter_show_limit' => $row['filter_show_limit'],
+                    'position' => $row['position']
+                );
+            }
+
+            return $formatted_filters;
+        } catch (Exception $e) {
+            self::log('Unable to get filters from database', array('id_category' => $id_category));
+            return array();
+        }
+    }
+
+    /**
+     * @return array selected filters
+     */
+    public function getSelectedFilters()
+    {
+        if ($this->selected_filters === null) {
+            $id_category = $this->id_category;
+
+            if ($id_category == Configuration::get('PS_HOME_CATEGORY') || !$id_category) {
+                return null;
+            }
+
+            /* Analyze all the filters selected by the user and store them into a tab */
+            $selected_filters = array(
+                'category' => array(),
+                'manufacturer' => array(),
+                'quantity' => array(),
+                'condition' => array()
+            );
+
+            foreach ($_GET as $key => $value) {
+                if (Tools::strpos($key, 'elasticsearch_') === 0) {
+                    preg_match(
+                        '/^(.*)_([0-9]+|new|used|refurbished|slider)$/',
+                        Tools::substr($key, 14, Tools::strlen($key) - 14),
+                        $res
+                    );
+
+                    if (isset($res[1])) {
+                        $tmp_tab = explode('_', $this->sanitizeValue($value));
+                        $value = $this->sanitizeValue($tmp_tab[0]);
+                        $id_key = false;
+
+                        if (isset($tmp_tab[1])) {
+                            $id_key = $tmp_tab[1];
+                        }
+
+                        if ($res[1] == 'condition' && in_array($value, array('new', 'used', 'refurbished'))) {
+                            $selected_filters['condition'][] = $value;
+                        } else {
+                            if ($res[1] == 'quantity' && (!$value || $value == 1)) {
+                                $selected_filters['quantity'][] = $value;
+                            } else {
+                                if (in_array($res[1], array('category', 'manufacturer'))) {
+                                    if (!isset($selected_filters[$res[1].($id_key ? '_'.$id_key : '')])) {
+                                        $selected_filters[$res[1].($id_key ? '_'.$id_key : '')] = array();
+                                    }
+
+                                    $selected_filters[$res[1].($id_key ? '_'.$id_key : '')][] = (int)$value;
+                                } else {
+                                    if (in_array($res[1], array('id_attribute_group', 'id_feature'))) {
+                                        if (!isset($selected_filters[$res[1]])) {
+                                            $selected_filters[$res[1]] = array();
+                                        }
+                                        $selected_filters[$res[1]][(int)$value] = $id_key.'_'.(int)$value;
+                                    } else {
+                                        if ($res[1] == 'weight') {
+                                            $selected_filters[$res[1]] = $tmp_tab;
+                                        } else {
+                                            if ($res[1] == 'price') {
+                                                $selected_filters[$res[1]] = $tmp_tab;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-        if ($price_array['max'] != $price_array['min'] && $price_array['min'] != null)
-        {
-            if ($filter['filter_type'] == 2)
-            {
+            $this->selected_filters = $selected_filters;
+        }
+
+        return $this->selected_filters;
+    }
+
+    /**
+     * Formats partial fields in correct syntax to use in ElasticSearch calls
+     * @param array $required_fields
+     * @return array
+     */
+    public function getPartialFields(array $required_fields)
+    {
+        $partial_fields = array();
+
+        if ($required_fields) {
+            $partial_fields['data'] = array('include' => array());
+
+            foreach ($required_fields as $field) {
+                $partial_fields['data']['include'][] = $field;
+            }
+        }
+
+        return $partial_fields;
+    }
+
+    /**
+     * @param array $filter
+     * @return array price filter data to be used in template
+     */
+    protected function getPriceFilter($filter)
+    {
+        if (isset($filter[0])) {
+            $filter = $filter[0];
+        }
+
+        $currency = Context::getContext()->currency;
+
+        $price_array = array(
+            'type_lite' => self::FILTER_TYPE_PRICE,
+            'type' => self::FILTER_TYPE_PRICE,
+            'id_key' => 0,
+            'name' => $this->getModuleInstance()->l('Price', self::FILENAME),
+            'slider' => true,
+            'max' => '0',
+            'min' => null,
+            'values' => array('1' => 0),
+            'unit' => $currency->sign,
+            'format' => $currency->format,
+            'filter_show_limit' => $filter['filter_show_limit'],
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
+        );
+
+        //getting min and max prices from aggregations
+        $min_price = $this->getAggregation('price_min_'.$currency->id);
+        $max_price = $this->getAggregation('price_max_'.$currency->id);
+
+        $price_array['min'] = $min_price;
+        $price_array['values'][0] = $price_array['min'];
+
+        $price_array['max'] = $max_price;
+        $price_array['values'][1] = $price_array['max'];
+
+        if ($price_array['max'] != $price_array['min'] && $price_array['min'] !== null) {
+            if ($filter['filter_type'] == AbstractFilter::FILTER_STYLE_LIST_OF_VALUES) {
                 $price_array['list_of_values'] = array();
                 $nbr_of_value = $filter['filter_show_limit'];
 
-                if ($nbr_of_value < 2)
+                if ($nbr_of_value < 2) {
                     $nbr_of_value = 4;
+                }
 
                 $delta = ($price_array['max'] - $price_array['min']) / $nbr_of_value;
 
-                for ($i = 0; $i < $nbr_of_value; $i++)
+                for ($i = 0; $i < $nbr_of_value; $i++) {
                     $price_array['list_of_values'][] = array(
                         (int)$price_array['min'] + $i * (int)$delta,
                         (int)$price_array['min'] + ($i + 1) * (int)$delta
                     );
+                }
             }
 
-            if (isset($selected_filters['price'][0]) && isset($selected_filters['price'][1]))
-            {
+            $selected_filters = $this->getSelectedFilters();
+
+            if ($selected_filters && isset($selected_filters['price'][0]) && isset($selected_filters['price'][1])) {
                 $price_array['values'][0] = $selected_filters['price'][0];
                 $price_array['values'][1] = $selected_filters['price'][1];
             }
@@ -221,964 +826,678 @@ class ElasticSearchFilter extends ElasticSearchService
         return null;
     }
 
-    public function getWeightFilter($filter)
+    /**
+     * @param array $filter
+     * @return array weight filter data to be used in template
+     */
+    protected function getWeightFilter($filter)
     {
+        if (isset($filter[0])) {
+            $filter = $filter[0];
+        }
+
         $weight_array = array(
-            'type_lite' => 'weight',
-            'type' => 'weight',
+            'type_lite' => self::FILTER_TYPE_WEIGHT,
+            'type' => self::FILTER_TYPE_WEIGHT,
             'id_key' => 0,
-            'name' => $this->module_instance->l('Weight', self::FILENAME),
+            'name' => $this->getModuleInstance()->l('Weight', self::FILENAME),
             'slider' => true,
             'max' => '0',
             'min' => null,
-            'values' => array ('1' => 0),
+            'values' => array('1' => 0),
             'unit' => Configuration::get('PS_WEIGHT_UNIT'),
             'format' => 5, // Ex: xxxxx kg
             'filter_show_limit' => $filter['filter_show_limit'],
-            'filter_type' => $filter['filter_type']
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
 
-        if ($this->all_products)
-            foreach ($this->all_products as $product)
-            {
-                if (is_null($weight_array['min']))
-                {
-                    $weight_array['min'] = $product['_source']['weight'];
-                    $weight_array['values'][0] = $product['_source']['weight'];
-                }
-                else if ($weight_array['min'] > $product['_source']['weight'])
-                {
-                    $weight_array['min'] = $product['_source']['weight'];
-                    $weight_array['values'][0] = $product['_source']['weight'];
-                }
+        //getting min and max weight from aggregations
+        $min_weight = $this->getAggregation('min_weight');
+        $max_weight = $this->getAggregation('max_weight');
 
-                if ($weight_array['max'] < $product['_source']['weight'])
-                {
-                    $weight_array['max'] = $product['_source']['weight'];
-                    $weight_array['values'][1] = $product['_source']['weight'];
-                }
-            }
+        $weight_array['min'] = floor($min_weight);
+        $weight_array['values'][0] = $weight_array['min'];
 
-        if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] != null)
-        {
-            if (isset($selected_filters['weight']) && isset($selected_filters['weight'][0])
-                && isset($selected_filters['weight'][1]))
-            {
+        $weight_array['max'] = ceil($max_weight);
+        $weight_array['values'][1] = $weight_array['max'];
+
+        if ($weight_array['max'] != $weight_array['min'] && $weight_array['min'] !== null) {
+            $selected_filters = $this->getSelectedFilters();
+
+            if ($selected_filters
+                && isset($selected_filters['weight'])
+                && isset($selected_filters['weight'][0])
+                && isset($selected_filters['weight'][1])
+            ) {
                 $weight_array['values'][0] = $selected_filters['weight'][0];
                 $weight_array['values'][1] = $selected_filters['weight'][1];
             }
+
             return $weight_array;
         }
 
         return null;
     }
 
-    public function getConditionFilter($filter, $params, $filter_query, $selected_filters)
+    /**
+     * @param $filter array available condition values - ID of condition => name of condition
+     * @return array product condition filter data to be used in template
+     */
+    protected function getConditionFilter($filter)
     {
-        $query_new = $this->buildSearchQuery('bool_must', array_merge(
-            $params,
-            array(
-                array(
-                    'term' => array(
-                        'condition' => 'new'
-                    )
-                )
-            )
-        ));
+        if (isset($filter[0])) {
+            $filter = $filter[0];
+        }
 
-        $query_used = $this->buildSearchQuery('bool_must', array_merge(
-            $params,
-            array(
-                array(
-                    'term' => array(
-                        'condition' => 'used'
-                    )
-                )
-            )
-        ));
-
-        $query_refurbished = $this->buildSearchQuery('bool_must', array_merge(
-            $params,
-            array(
-                array(
-                    'term' => array(
-                        'condition' => 'refurbished'
-                    )
-                )
-            )
-        ));
-
-        //number of new products
-        $nbr_new = $this->search('products', $query_new, null, null, null, null, $filter_query);
-
-        //number of used products
-        $nbr_used = $this->search('products', $query_used, null, null, null, null, $filter_query);
-
-        //number of refurbished products
-        $nbr_refurbished = $this->search('products', $query_refurbished, null, null, null, null, $filter_query);
-
-        $condition_array = array(
-            'new' => array(
-                'name' => $this->module_instance->l('New', self::FILENAME),
-                'nbr' => $nbr_new
-            ),
-            'used' => array(
-                'name' => $this->module_instance->l('Used', self::FILENAME),
-                'nbr' => $nbr_used
-            ),
-            'refurbished' => array(
-                'name' => $this->module_instance->l('Refurbished', self::FILENAME),
-                'nbr' => $nbr_refurbished
-            )
+        $condition_filter = array(
+            'type_lite' => self::FILTER_TYPE_CONDITION,
+            'type' => self::FILTER_TYPE_CONDITION,
+            'id_key' => 0,
+            'name' => $this->getModuleInstance()->l('Condition', self::FILENAME),
+            'values' => array(),
+            'filter_show_limit' => $filter['filter_show_limit'],
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
 
-        if ($this->filtered_products)
-            foreach ($this->filtered_products as $product)
-                if (isset($selected_filters['condition']) && in_array($product['_source']['condition'], $selected_filters['condition']))
-                    $condition_array[$product['_source']['condition']]['checked'] = true;
+        $aggregation = $this->getAggregation(self::FILTER_TYPE_CONDITION);
 
-        foreach (array_keys($condition_array) as $key)
-            if (isset($selected_filters['condition']) && in_array($key, $selected_filters['condition']))
-                $condition_array[$key]['checked'] = true;
+        if (!$aggregation) {
+            return $condition_filter;
+        }
 
-        if ($nbr_new || $nbr_used || $nbr_refurbished || !Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'))
-            return array(
-                'type_lite' => 'condition',
-                'type' => 'condition',
-                'id_key' => 0,
-                'name' => $this->module_instance->l('Condition', self::FILENAME),
-                'values' => $condition_array,
-                'filter_show_limit' => $filter['filter_show_limit'],
-                'filter_type' => $filter['filter_type']
+        $selected_filters = $this->getSelectedFilters();
+        $condition_array = array();
+
+        if (isset($aggregation['new']) && ($aggregation['new'] || !$this->hide_0_values)) {
+            $condition_array['new'] = array(
+                'name' => $this->getModuleInstance()->l('New', self::FILENAME),
+                'nbr' => $aggregation['new']
             );
 
-        return null;
-    }
-
-    public function initAllProducts()
-    {
-        if ($this->all_products === null)
-        {
-            $query_all = $this->buildSearchQuery('bool_must', array(
-                'term' => array(
-                    'categories' => Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'))
-                )
-            ));
-
-            $this->all_products = $this->search('products', $query_all, null);
-        }
-    }
-
-    public function initFilteredProducts($selected_filters)
-    {
-        if ($this->filtered_products === null)
-        {
-            $this->filtered_products_query_params = $this->getProductsQueryByFilters($selected_filters, $this->filter_query);
-            $query = $this->buildSearchQuery('bool_must', $this->filtered_products_query_params);
-            $this->fixFilterQuery($this->filter_query);
-            $this->filtered_products = $this->search('products', $query, null, 0, null, null, $this->filter_query);
-        }
-    }
-
-    public function getFilterBlock($selected_filters = array())
-    {
-        static $cache = null;
-
-        if (is_array($cache))
-            return $cache;
-
-        $home_category = Configuration::get('PS_HOME_CATEGORY');
-        $id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
-
-        if ($id_category == $home_category)
-            return null;
-
-        $filters = $this->getFiltersFromDb($id_category);
-
-        // Remove all empty selected filters
-        foreach ($selected_filters as $key => $value)
-            switch ($key)
-            {
-                case 'price':
-                case 'weight':
-                    if ($value[0] === '' && $value[1] === '')
-                        unset($selected_filters[$key]);
-                    break;
-                default:
-                    if ($value == '')
-                        unset($selected_filters[$key]);
-                    break;
+            if (isset($selected_filters['condition']) && in_array('new', $selected_filters['condition'])) {
+                $condition_array['new']['checked'] = true;
             }
-
-        $this->initFilteredProducts($selected_filters);
-        $this->initAllProducts();
-
-        $current_category = $this->getDocumentById('categories', $id_category);
-        $categories = $this->searchChildCategories($current_category);
-
-        $filter_blocks = array();
-
-        foreach ($filters as $filter)
-            switch ($filter['type'])
-            {
-                case 'price':
-                    if ($this->showPriceFilter())
-                    {
-                        $price_filter = $this->getPriceFilter($filter);
-
-                        if ($price_filter)
-                            $filter_blocks[] = $price_filter;
-                    }
-                    break;
-                case 'weight':
-                    $weight_filter = $this->getWeightFilter($filter);
-
-                    if ($weight_filter)
-                        $filter_blocks[] = $weight_filter;
-                    break;
-                case 'condition':
-                    $condition_filter = $this->getConditionFilter($filter, $this->filtered_products_query_params, $this->filter_query, $selected_filters);
-
-                    if ($condition_filter)
-                        $filter_blocks[] = $condition_filter;
-                    break;
-
-                case 'quantity':
-                    $quantity_array = array (
-                        0 => array('name' => $this->module_instance->l('Not available', self::FILENAME), 'nbr' => 0),
-                        1 => array('name' => $this->module_instance->l('In stock', self::FILENAME), 'nbr' => 0)
-                    );
-
-                    foreach (array_keys($quantity_array) as $key)
-                        if (isset($selected_filters['quantity']) && in_array($key, $selected_filters['quantity']))
-                            $quantity_array[$key]['checked'] = true;
-
-                    if ($this->filtered_products)
-                        foreach ($this->filtered_products as $product)
-                        {
-                            //If oosp move all not available quantity to available quantity
-                            if ((int)$product['_source']['quantity'] > 0 || Product::isAvailableWhenOutOfStock(StockAvailable::outOfStock($product['_id'])))
-                                $quantity_array[1]['nbr']++;
-                            else
-                                $quantity_array[0]['nbr']++;
-                        }
-
-                    if ($quantity_array[0]['nbr'] || $quantity_array[1]['nbr'] || !Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'))
-                        $filter_blocks[] = array(
-                            'type_lite' => 'quantity',
-                            'type' => 'quantity',
-                            'id_key' => 0,
-                            'name' => $this->module_instance->l('Availability', self::FILENAME),
-                            'values' => $quantity_array,
-                            'filter_show_limit' => $filter['filter_show_limit'],
-                            'filter_type' => $filter['filter_type']
-                        );
-
-                    break;
-
-                case 'manufacturer':
-                    if ($this->filtered_products)
-                    {
-                        $manufacturers_array = array();
-                        $manufacturers_nbr = array();
-                        foreach ($this->filtered_products as $manufacturer)
-                        {
-                            if (!isset($manufacturers_nbr[$manufacturer['_source']['id_manufacturer']]))
-                            {
-                                $query = $this->buildSearchQuery('bool_must', array_merge(
-                                    $this->filtered_products_query_params,
-                                    array(
-                                        array(
-                                            'term' => array(
-                                                'id_manufacturer' => $manufacturer['_source']['id_manufacturer']
-                                            )
-                                        )
-                                    )
-                                ));
-                                $nbr = $this->search('products', $query, null, null, null, null, $this->filter_query);
-                                $manufacturers_nbr[$manufacturer['_source']['id_manufacturer']] = $nbr;
-                            }
-
-                            if (!isset($manufacturers_array[$manufacturer['_source']['id_manufacturer']]))
-                                $manufaturers_array[$manufacturer['_source']['id_manufacturer']] = array(
-                                    'name' => $manufacturer['_source']['manufacturer_name'],
-                                    'nbr' => $manufacturers_nbr[$manufacturer['_source']['id_manufacturer']]
-                                );
-
-                            if (isset($selected_filters['manufacturer']) && in_array((int)$manufacturer['_source']['id_manufacturer'], $selected_filters['manufacturer']))
-                                $manufaturers_array[$manufacturer['_source']['id_manufacturer']]['checked'] = true;
-                        }
-                        $filter_blocks[] = array(
-                            'type_lite' => 'manufacturer',
-                            'type' => 'manufacturer',
-                            'id_key' => 0,
-                            'name' => $this->module_instance->l('Manufacturer', self::FILENAME),
-                            'values' => $manufacturers_array,
-                            'filter_show_limit' => $filter['filter_show_limit'],
-                            'filter_type' => $filter['filter_type']
-                        );
-                    }
-                    break;
-
-                case 'id_attribute_group':
-                    $attributes_array = array();
-                    if ($this->filtered_products)
-                    {
-                        foreach ($this->filtered_products as $product)
-                        {
-                            foreach ($product['_source'] as $attribute_group => $attributes)
-                            {
-                                if (Tools::strpos($attribute_group, 'attribute_group_') !== false)
-                                {
-                                    $id_attribute_group = (int)str_replace('attribute_group_', '', $attribute_group);
-
-                                    if ($filter['id_value'] != $id_attribute_group)
-                                        continue;
-
-                                    $group = new AttributeGroup($id_attribute_group);
-
-                                    if (!isset($attributes_array[$id_attribute_group]))
-                                        $attributes_array[$id_attribute_group] = array(
-                                            'type_lite' => 'id_attribute_group',
-                                            'type' => 'id_attribute_group',
-                                            'id_key' => $id_attribute_group,
-                                            'name' => $group->name[$this->context->language->id],
-                                            'is_color_group' => (bool)$group->is_color_group,
-                                            'values' => array(),
-                                            'filter_show_limit' => $filter['filter_show_limit'],
-                                            'filter_type' => $filter['filter_type']
-                                        );
-
-                                    if ($attributes)
-                                        foreach ($attributes as $id_attribute)
-                                        {
-                                            $attribute = new Attribute($id_attribute);
-
-                                            if (!isset($attributes_array[$id_attribute_group]['values'][$id_attribute]))
-                                            {
-                                                $query = $this->buildSearchQuery(
-                                                    'bool_must', array_merge(
-                                                        $this->filtered_products_query_params,
-                                                        array(
-                                                            array(
-                                                                'term' => array(
-                                                                    $attribute_group => $id_attribute
-                                                                )
-                                                            )
-                                                        )
-                                                    )
-                                                );
-
-                                                $nbr = $this->search(
-                                                    'products',
-                                                    $query,
-                                                    null,
-                                                    null,
-                                                    null,
-                                                    null,
-                                                    $this->filter_query
-                                                );
-
-                                                $attributes_array[$id_attribute_group]['values'][$id_attribute] = array(
-                                                    'color' => $attribute->color,
-                                                    'name' => $attribute->name[$this->context->language->id],
-                                                    'nbr' => (int)$nbr
-                                                );
-                                            }
-
-                                            if (isset($selected_filters['id_attribute_group'][$id_attribute]))
-                                                $attributes_array[$id_attribute_group]['values'][$id_attribute]['checked'] = true;
-                                        }
-                                }
-                            }
-                        }
-
-                        $filter_blocks = array_merge($filter_blocks, $attributes_array);
-                    }
-                    break;
-                case 'id_feature':
-                    $feature_array = array();
-                    if ($this->filtered_products)
-                    {
-                        foreach ($this->filtered_products as $product)
-                        {
-                            foreach ($product['_source'] as $feature => $id_feature_value)
-                            {
-                                if (Tools::strpos($feature, 'feature_') !== false)
-                                {
-                                    $id_feature = (int)str_replace('feature_', '', $feature);
-
-                                    if ($filter['id_value'] != $id_feature)
-                                        continue;
-
-                                    $feature_obj = new Feature($id_feature);
-
-                                    if (!isset($feature_array[$id_feature]))
-                                        $feature_array[$id_feature] = array(
-                                            'type_lite' => 'id_feature',
-                                            'type' => 'id_feature',
-                                            'id_key' => (int)$id_feature,
-                                            'values' => array(),
-                                            'name' => $feature_obj->name[$this->context->language->id],
-                                            'filter_show_limit' => $filter['filter_show_limit'],
-                                            'filter_type' => $filter['filter_type']
-                                        );
-
-                                    if (!isset($feature_array[$id_feature]['values'][$id_feature_value]))
-                                    {
-                                        $query = $this->buildSearchQuery(
-                                            'bool_must',
-                                            array_merge(
-                                                $this->filtered_products_query_params,
-                                                array(
-                                                    array(
-                                                        'term' => array(
-                                                            $feature => $id_feature_value
-                                                        )
-                                                    )
-                                                )
-                                            )
-                                        );
-
-                                        $nbr = $this->search('products', $query, null, null, null, null, $this->filter_query);
-
-                                        $feature_value_obj = new FeatureValue($id_feature_value);
-
-                                        $feature_array[$id_feature]['values'][$id_feature_value] = array(
-                                            'nbr' => (int)$nbr,
-                                            'name' => $feature_value_obj->value[$this->context->language->id]
-                                        );
-                                    }
-
-                                    if (isset($selected_filters['id_feature'][$id_feature_value]))
-                                        $feature_array[$id_feature]['values'][$id_feature_value]['checked'] = true;
-                                }
-                            }
-                        }
-
-                        //Natural sort
-                        foreach ($feature_array as $key => $value)
-                        {
-                            $temp = array();
-                            foreach ($feature_array[$key]['values'] as $keyint => $valueint)
-                                $temp[$keyint] = $valueint['name'];
-
-                            natcasesort($temp);
-                            $temp2 = array();
-
-                            foreach (array_keys($temp) as $keytemp)
-                                $temp2[$keytemp] = $feature_array[$key]['values'][$keytemp];
-
-                            $feature_array[$key]['values'] = $temp2;
-                        }
-
-                        $filter_blocks = array_merge($filter_blocks, $feature_array);
-                    }
-                    break;
-
-                case 'category':
-                    $tmp_array = array();
-                    if ($this->filtered_products)
-                    {
-                        $categories_with_products_count = 0;
-                        foreach ($categories as $category)
-                        {
-                            $category_params = $this->filtered_products_query_params;
-                            $this->changeQueryCategory($category_params, $category['_id']);
-
-                            $nbr_products = $this->search(
-                                'products',
-                                $this->buildSearchQuery('bool_must', $category_params),
-                                null,
-                                null
-                            );
-
-                            $tmp_array[$category['_id']] = array(
-                                'name' => $category['_source']['name_'.$this->context->language->id],
-                                'nbr' => (int)$nbr_products
-                            );
-
-                            if ((int)$nbr_products)
-                                $categories_with_products_count++;
-
-                            if (isset($selected_filters['category']) && in_array($category['_id'], $selected_filters['category']))
-                                $tmp_array[$category['_id']]['checked'] = true;
-                        }
-                        if ($categories_with_products_count || !Configuration::get('ELASTICSEARCH_HIDE_0_VALUES'))
-                            $filter_blocks[] = array(
-                                'type_lite' => 'category',
-                                'type' => 'category',
-                                'id_key' => 0,
-                                'name' => $this->module_instance->l('Categories', self::FILENAME),
-                                'values' => $tmp_array,
-                                'filter_show_limit' => $filter['filter_show_limit'],
-                                'filter_type' => $filter['filter_type']
-                            );
-                    }
-                    break;
-            }
-
-        $existing_filters = array();
-        $count = count($filter_blocks);
-
-        //removing duplicate filters
-        for ($k = 0; $k < $count; $k++)
-        {
-            if (array_search($filter_blocks[$k]['type'].$filter_blocks[$k]['id_key'], $existing_filters) !== false)
-            {
-                unset($filter_blocks[$k]);
-                continue;
-            }
-
-            if (isset($filter_blocks[$k]['values']))
-                foreach ($filter_blocks[$k]['values'] as &$value)
-                    if (is_array($value))
-                    {
-                        $value['link'] = 'javascript:void(0);';
-                        $value['rel'] = '';
-                    }
-
-            $existing_filters[] = $filter_blocks[$k]['type'].$filter_blocks[$k]['id_key'];
         }
 
-        $n_filters = 0;
-        if (isset($selected_filters['price']) && isset($price_array))
-            if ($price_array['min'] == $selected_filters['price'][0] && $price_array['max'] == $selected_filters['price'][1])
-                unset($selected_filters['price']);
-        if (isset($selected_filters['weight']) && isset($weight_array))
-            if ($weight_array['min'] == $selected_filters['weight'][0] && $weight_array['max'] == $selected_filters['weight'][1])
-                unset($selected_filters['weight']);
+        if (isset($aggregation['used']) && ($aggregation['used'] || !$this->hide_0_values)) {
+            $condition_array['used'] = array(
+                'name' => $this->getModuleInstance()->l('Used', self::FILENAME),
+                'nbr' => $aggregation['used'],
+                'checked' => isset($selected_filters['condition']) && in_array('used', $selected_filters['condition'])
+            );
 
-        foreach ($selected_filters as $filters)
-            $n_filters += count($filters);
+            if (isset($selected_filters['condition']) && in_array('used', $selected_filters['condition'])) {
+                $condition_array['used']['checked'] = true;
+            }
+        }
 
-        $cache = array(
-            'elasticsearch_show_qties' => (int)Configuration::get('ELASTICSEARCH_SHOW_QTIES'),
-            'id_elasticsearch_category' => (int)$id_category,
-            'selected_filters' => $selected_filters,
-            'n_filters' => (int)$n_filters,
-            'nbr_filterBlocks' => count($filter_blocks),
-            'filters' => $filter_blocks,
-            'title_values' => array(),
-            'meta_values' => array(),
-            'current_friendly_url' => '',
-            'param_product_url' => '',
-            'no_follow' => false
-        );
+        if (isset($aggregation['refurbished']) && ($aggregation['refurbished'] || !$this->hide_0_values)) {
+            $condition_array['refurbished'] = array(
+                'name' => $this->getModuleInstance()->l('Refurbished', self::FILENAME),
+                'nbr' => $aggregation['refurbished']
+            );
 
-        return $cache;
+            if (isset($selected_filters['condition']) && in_array('refurbished', $selected_filters['condition'])) {
+                $condition_array['refurbished']['checked'] = true;
+            }
+        }
+
+        $condition_filter['values'] = $condition_array;
+
+        return $condition_filter;
     }
 
     /**
-     * Returns filters for category
-     * @return array - filters data
-     * @throws PrestaShopDatabaseException
+     * @param $filter array quantity filter data
+     * @return array product quantity filter data to be used in template
      */
-    public function getFiltersFromDb($id_category)
+    protected function getQuantityFilter($filter)
     {
-        try
-        {
-            return Db::getInstance(_PS_USE_SQL_SLAVE_)->executeS('
-            SELECT `id_elasticsearch_category`, `id_shop`, `id_category`, `id_value`, `type`, `position`, `filter_type`, `filter_show_limit`, `date_add`
-            FROM '._DB_PREFIX_.'elasticsearch_category
-            WHERE `id_category` = "'.(int)$id_category.'"
-                AND `id_shop` = "'.(int)$this->context->shop->id.'"
-            GROUP BY `type`, `id_value`
-            ORDER BY `position` ASC
-        ');
-        } catch (Exception $e) {
-            self::log('Unable to get filters from database', array('id_category' => $id_category));
-            return array();
+        if (isset($filter[0])) {
+            $filter = $filter[0];
         }
+
+        $out_of_stock = $this->getAggregation('out_of_stock');
+
+        if (is_array($out_of_stock)) {
+            $out_of_stock = reset($out_of_stock);
+        }
+
+        $in_stock = $this->getAggregation('in_stock');
+
+        if (is_array($in_stock)) {
+            $in_stock = reset($in_stock);
+        }
+
+        $quantity_array = array();
+
+        if (!$this->hide_0_values) {
+            $quantity_array[0] = array(
+                'name' => $this->getModuleInstance()->l('Not available', self::FILENAME),
+                'nbr' => $out_of_stock
+            );
+            $quantity_array[1] = array(
+                'name' => $this->getModuleInstance()->l('In stock', self::FILENAME),
+                'nbr' => $in_stock
+            );
+        } else {
+            if ($out_of_stock) {
+                $quantity_array[0] = array(
+                    'name' => $this->getModuleInstance()->l('Not available', self::FILENAME),
+                    'nbr' => $out_of_stock
+                );
+            }
+            if ($in_stock) {
+                $quantity_array[1] = array(
+                    'name' => $this->getModuleInstance()->l('In stock', self::FILENAME),
+                    'nbr' => $in_stock
+                );
+            }
+        }
+
+        $selected_filters = $this->getSelectedFilters();
+
+        //selecting filters where needed
+        foreach (array_keys($quantity_array) as $key) {
+            if (isset($selected_filters['quantity']) && in_array($key, $selected_filters['quantity'])) {
+                $quantity_array[$key]['checked'] = true;
+            }
+        }
+
+        if (!empty($quantity_array[0]['nbr']) || !empty($quantity_array[1]['nbr']) || !$this->hide_0_values) {
+            return array(
+                'type_lite' => self::FILTER_TYPE_QUANTITY,
+                'type' => self::FILTER_TYPE_QUANTITY,
+                'id_key' => 0,
+                'name' => $this->getModuleInstance()->l('Availability', self::FILENAME),
+                'values' => $quantity_array,
+                'filter_show_limit' => $filter['filter_show_limit'],
+                'filter_type' => $filter['filter_type'],
+                'position' => $filter['position']
+            );
+        }
+
+        return false;
     }
 
-    public function ajaxCall()
+    /**
+     * @param $filter array manufacturers filter data
+     * @return array product manufacturers filter data to be used in template
+     */
+    protected function getManufacturerFilter($filter)
     {
+        if (isset($filter[0])) {
+            $filter = $filter[0];
+        }
+
         $selected_filters = $this->getSelectedFilters();
-        $filter_block = $this->getFilterBlock($selected_filters);
+        $manufacturers = $this->getAggregation('id_manufacturer');
 
-        $this->getProducts($selected_filters, $products, $nb_products, $p, $n, $pages_nb, $start, $stop, $range);
+        if (!$manufacturers)
+            return array();
 
-        $n_array = array((int)Configuration::get('PS_PRODUCTS_PER_PAGE'), 10, 20, 50);
-        $n_array = array_unique($n_array);
-        asort($n_array);
+        $manufacturers_with_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            array_keys($manufacturers),
+            'manufacturer',
+            'id_manufacturer',
+            'name',
+            false
+        );
+        $manufacturers_values = array();
 
-        $this->context->controller->addColorsToProductList($products);
-        $id_category = (int)Tools::getValue('id_elasticsearch_category', (int)Configuration::get('PS_HOME_CATEGORY'));
-        $category = new Category((int)$id_category, (int)$this->context->cookie->id_lang);
-
-        // Generate meta title and meta description
-        $category_title = (empty($category->meta_title) ? $category->name : $category->meta_title);
-        $category_metas = Meta::getMetaTags((int)$this->context->cookie->id_lang, 'category');
-        $title = '';
-        $keywords = '';
-
-        if (is_array($filter_block['title_values']))
-            foreach ($filter_block['title_values'] as $key => $val)
-            {
-                $title .= ' > '.$key.' '.implode('/', $val);
-                $keywords .= $key.' '.implode('/', $val).', ';
+        foreach ($manufacturers_with_names as $id_manufacturer => $name) {
+            if ($manufacturers[$id_manufacturer] == 0 && $this->hide_0_values) {
+                continue;
             }
 
-        $title = $category_title.$title;
-        $meta_title = !empty($title) ? $title : $category_metas['meta_title'];
-        $meta_description = $category_metas['meta_description'];
-
-        $keywords = Tools::substr(Tools::strtolower($keywords), 0, 1000);
-
-        if (!empty($keywords))
-            $meta_keywords = rtrim($category_title.', '.$keywords.', '.$category_metas['meta_keywords'], ', ');
-
-        $this->context->smarty->assign(
-            array(
-                'homeSize' => Image::getSize(ImageType::getFormatedName('home')),
-                'nb_products' => $nb_products,
-                'category' => $category,
-                'pages_nb' => (int)$pages_nb,
-                'p' => (int)$p,
-                'n' => (int)$n,
-                'range' => (int)$range,
-                'start' => (int)$start,
-                'stop' => (int)$stop,
-                'n_array' => ((int)Configuration::get('PS_PRODUCTS_PER_PAGE') != 10) ? array((int)Configuration::get('PS_PRODUCTS_PER_PAGE'), 10, 20, 50) :
-                    array(10, 20, 50),
-                'comparator_max_item' => (int)Configuration::get('PS_COMPARATOR_MAX_ITEM'),
-                'products' => $products,
-                'products_per_page' => (int)Configuration::get('PS_PRODUCTS_PER_PAGE'),
-                'static_token' => Tools::getToken(false),
-                'page_name' => 'category',
-                'nArray' => $n_array,
-                'compareProducts' => CompareProduct::getCompareProducts((int)$this->context->cookie->id_compare)
-            )
-        );
-
-        // Prevent bug with old template where category.tpl contain the title of the category and category-count.tpl do not exists
-        $category_count = file_exists(_PS_THEME_DIR_.'category-count.tpl') ? $this->context->smarty->fetch(_PS_THEME_DIR_.'category-count.tpl') : '';
-        $product_list = $nb_products == 0 ? $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'hook/elasticsearch-filter-no-products.tpl') :
-            $this->context->smarty->fetch(_PS_THEME_DIR_.'product-list.tpl');
-
-        $friendly_url = $_SERVER['REQUEST_URI'];
-        $friendly_url = str_replace(_ELASTICSEARCH_AJAX_URI_.'?', '#', $friendly_url);
-        $friendly_url = explode('&token', $friendly_url);
-        $friendly_url = str_replace('&submitElasticsearchFilter=1', '', $friendly_url[0]);
-
-        $vars = array(
-            'filtersBlock' => utf8_encode($this->generateFiltersBlock($selected_filters)),
-            'productList' => utf8_encode($product_list),
-            'pagination' => $this->context->smarty->fetch(_PS_THEME_DIR_.'pagination.tpl'),
-            'categoryCount' => $category_count,
-            'meta_title' => $meta_title.' - '.Configuration::get('PS_SHOP_NAME'),
-            'heading' => $meta_title,
-            'meta_keywords' => isset($meta_keywords) ? $meta_keywords : null,
-            'meta_description' => $meta_description,
-            'current_friendly_url' => $friendly_url,
-            'filters' => $filter_block['filters'],
-            'nbRenderedProducts' => (int)$nb_products,
-            'nbAskedProducts' => (int)$n
-        );
-
-        $vars = array_merge($vars, array(
-            'pagination_bottom' => $this->context->smarty->assign('paginationId', 'bottom')->fetch(_PS_THEME_DIR_.'pagination.tpl')
-        ));
-
-        return $vars;
-    }
-
-    private function getProductByFilters($selected_filters, $count_only = false)
-    {
-        //building search query for selected filters
-        $query = $this->buildSearchQuery(
-            'bool_must',
-            $this->getProductsQueryByFilters($selected_filters, $filter)
-        );
-
-        $this->fixFilterQuery($filter);
-
-        if ($count_only)
-            return $this->search(
-                'products',
-                $query,
-                null,
-                null,
-                null,
-                null,
-                $filter
+            $manufacturers_values[$id_manufacturer] = array(
+                'name' => $name,
+                'nbr' => $manufacturers[$id_manufacturer]
             );
 
-        $pagination = (int)Tools::getValue('n');
-        $start = ($this->page - 1) * $pagination;
-        $order_by_values = array(0 => 'name', 1 => 'price', 6 => 'quantity', 7 => 'reference');
-        $order_way_values = array(0 => 'asc', 1 => 'desc');
+            if (array_search($id_manufacturer, $selected_filters[self::FILTER_TYPE_MANUFACTURER]) !== false) {
+                $manufacturers_values[$id_manufacturer]['checked'] = true;
+            }
+        }
 
-        $order_by = Tools::strtolower(
-            Tools::getValue('orderby',
-                isset($order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')]) ?
-                    $order_by_values[(int)Configuration::get('PS_PRODUCTS_ORDER_BY')] : null)
+        return array(
+            'type_lite' => self::FILTER_TYPE_MANUFACTURER,
+            'type' => self::FILTER_TYPE_MANUFACTURER,
+            'id_key' => 0,
+            'name' => $this->getModuleInstance()->l('Manufacturer', self::FILENAME),
+            'values' => $manufacturers_values,
+            'filter_show_limit' => $filter['filter_show_limit'],
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
         );
-
-        if ($order_by && !in_array($order_by, $order_by_values))
-            $order_by = null;
-
-        $order_way = Tools::strtolower(Tools::getValue('orderway',
-            isset($order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')]) ?
-                $order_way_values[(int)Configuration::get('PS_PRODUCTS_ORDER_WAY')] : null)
-        );
-
-        if ($order_by == 'name')
-            $order_by .= '_'.(int)Context::getContext()->language->id;
-
-        $products = $this->search(
-            'products',
-            $query,
-            $pagination ? $pagination : null,
-            $start,
-            $order_by,
-            $order_way,
-            $filter
-        );
-
-        $products_data = array();
-
-        foreach ($products as $product)
-            $products_data[] = array(
-                'id_product' => $product['_id'],
-                'out_of_stock' => $product['_source']['out_of_stock'],
-                'id_category_default' => $product['_source']['id_category_default'],
-                'link_rewrite' => $product['_source']['link_rewrite_'.$this->context->language->id],
-                'name' => $product['_source']['name_'.$this->context->language->id],
-                'description_short' => $product['_source']['description_short_'.$this->context->language->id],
-                'ean13' => $product['_source']['ean13'],
-                'id_image' => $product['_source']['id_image'],
-                'customizable' => $product['_source']['customizable'],
-                'minimal_quantity' => $product['_source']['minimal_quantity'],
-                'available_for_order' => $product['_source']['available_for_order'],
-                'show_price' => $product['_source']['show_price']
-            );
-
-        return $products_data;
     }
 
-    public function getProductsQueryByFilters($selected_filters, &$filter_query = null)
+    /**
+     * @param $filter array attribute group filter data
+     * @return array product attributes groups filter data to be used in template
+     */
+    protected function getAttributeGroupFilter($filter)
     {
-        $home_category = Configuration::get('PS_HOME_CATEGORY');
-        $id_category = (int)Tools::getValue('id_category', Tools::getValue('id_elasticsearch_category', $home_category));
+        $selected_filters = $this->getSelectedFilters();
+        $attributes_array = array();
+        $attributes_groups_names = array();
+        $attributes_names = array();
 
-        if ($id_category == $home_category)
-            return false;
+        foreach ($filter as $attribute_group_filter) {
+            $hide_filter = true; //if all values are empty and hide_0_values is false we hide the filter
 
-        $query = array();
+            $id_attribute_group = $attribute_group_filter['id_value'];
+            $attributes_groups_names[] = $id_attribute_group;
 
-        $price_counter = 0;
-        $weight_counter = 0;
-        $price_query = array();
-        $weight_query = array();
-        $categories = array();
+            $attributes_array[$id_attribute_group] = array(
+                'type_lite' => 'id_attribute_group',
+                'type' => 'id_attribute_group',
+                'id_key' => $id_attribute_group,
+                'name' => '',
+                'values' => array(),
+                'filter_show_limit' => $attribute_group_filter['filter_show_limit'],
+                'filter_type' => $attribute_group_filter['filter_type'],
+                'position' => $attribute_group_filter['position']
+            );
 
-        foreach ($selected_filters as $key => $filter_values)
-        {
-            if (!count($filter_values))
+            $aggregation = $this->getAggregation('attribute_group_'.$id_attribute_group);
+
+            if (!$aggregation)
                 continue;
 
-            preg_match('/^(.*[^_0-9])/', $key, $res);
-            $key = $res[1];
-
-            foreach ($filter_values as $value)
-                switch ($key)
-                {
-                    case 'id_feature':
-                        $parts = explode('_', $value);
-
-                        if (count($parts) != 2)
-                            break;
-
-                        $query[] = array('term' =>  array(
-                            'feature_'.$parts[0] => $parts[1]
-                        ));
-                        break;
-
-                    case 'id_attribute_group':
-                        $parts = explode('_', $value);
-
-                        if (count($parts) != 2)
-                            break;
-
-                        $query[] = array('term' =>  array(
-                            'attribute_group_'.$parts[0] => $parts[1]
-                        ));
-                        break;
-
-                    case 'category':
-                        $categories[] = array('term' => array('categories' => $value));
-                        break;
-
-                    case 'quantity':
-                        //values: 0 - not available, 1 - in stock
-                        if ($value == 0)
-                            $query[] = array('range' =>  array(
-                                'quantity' => array(
-                                    'lte' => 0
-                                )
-                            ));
-                        else if ($value == 1)
-                            $query[] = array('range' =>  array(
-                                'quantity' => array(
-                                    'gte' => 1
-                                )
-                            ));
-
-                        break;
-
-                    case 'manufacturer':
-                        $query[] = array('term' =>  array(
-                            'id_manufacturer' => $value
-                        ));
-                        break;
-
-                    case 'condition':
-                        $query[] = array('term' =>  array(
-                            'condition' => $value
-                        ));
-                        break;
-
-                    case 'weight':
-                        if ($weight_counter == 0)
-                            $weight_query['gte'] = $value;
-                        elseif ($weight_counter == 1)
-                            $weight_query['lte'] = $value;
-
-                        $weight_counter++;
-                        break;
-
-                    case 'price':
-                        if ($price_counter == 0)
-                            $price_query[0] = (int)$value;
-                        elseif ($price_counter == 1)
-                            $price_query[1] = ceil($value);
-
-                        $price_counter++;
-                        break;
+            foreach ($aggregation as $id_attribute => $nbr) {
+                if ($nbr == 0 && $this->hide_0_values) {
+                    continue;
                 }
+
+                $hide_filter = false;
+
+                $attributes_names[] = $id_attribute;
+                $attributes_array[$id_attribute_group]['values'][$id_attribute] = array(
+                    'nbr' => (int)$nbr,
+                    'name' => ''
+                );
+
+                if (!empty($selected_filters[self::FILTER_TYPE_ATTRIBUTE_GROUP])
+                    && array_search($id_attribute_group.'_'.$id_attribute, $selected_filters[self::FILTER_TYPE_ATTRIBUTE_GROUP])
+                    !== false
+                ) {
+                    $attributes_array[$id_attribute_group]['values'][$id_attribute]['checked'] = true;
+                }
+            }
+
+            if ($hide_filter) {
+                unset($attributes_array[$id_attribute_group]);
+                continue;
+            }
         }
 
-        //completing price query
-        if (isset($price_query[0]) && isset($price_query[1]))
-        {
-            $filter_query[] = array(
-                'or' => array(
-                    array(
-                        'range' => array(
-                            'price_min_'.(int)$this->context->currency->id => array(
-                                'gte' => $price_query[0],
-                                'lte' => $price_query[1]
-                            )
-                        )
-                    ),
-                    array(
-                        'range' => array(
-                            'price_min_'.(int)$this->context->currency->id => array(
-                                'lt' => $price_query[0]
-                            ),
-                            'price_max_'.(int)$this->context->currency->id => array(
-                                'gt' => $price_query[0]
-                            )
-                        )
-                    ),
-                    array(
-                        'range' => array(
-                            'price_min_'.(int)$this->context->currency->id => array(
-                                'lt' => $price_query[1]
-                            ),
-                            'price_max_'.(int)$this->context->currency->id => array(
-                                'gt' => $price_query[1]
-                            )
-                        )
-                    )
-                )
+        $color_groups = $this->getModuleInstance()->getIsColorGroups($attributes_groups_names);
+        $attributes_groups_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $attributes_groups_names,
+            'attribute_group_lang',
+            'id_attribute_group'
+        );
+
+        $colors = $this->getModuleInstance()->getAttributesColors($attributes_names);
+        $attributes_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $attributes_names,
+            'attribute_lang',
+            'id_attribute'
+        );
+
+        //adding names to values
+        foreach ($attributes_array as &$attribute_group) {
+            $attribute_group['name'] =
+                isset($attributes_groups_names[$attribute_group['id_key']])
+                    ? $attributes_groups_names[$attribute_group['id_key']]
+                    : '';
+
+            $attribute_group['is_color_group'] =
+                isset($color_groups[$attribute_group['id_key']])
+                    ? $color_groups[$attribute_group['id_key']]
+                    : 0;
+
+            foreach ($attribute_group['values'] as $id_attribute => &$fields) {
+                $fields['name'] = isset($attributes_names[$id_attribute])
+                    ? $attributes_names[$id_attribute]
+                    : '';
+
+                if (isset($colors[$id_attribute])) {
+                    $fields['color'] = $colors[$id_attribute];
+                }
+            }
+        }
+
+        return $attributes_array;
+    }
+
+    /**
+     * @param $filter array features filter data
+     * @return array product features filter data to be used in template
+     */
+    protected function getFeatureFilter($filter)
+    {
+        $this->formatFilterValues($filter);
+
+        $selected_filters = $this->getSelectedFilters();
+        $feature_array = array();
+
+        $features_names = array();
+        $features_values_names = array();
+
+        foreach ($filter as $id_feature => $feature_filter) {
+            $hide_filter = true;
+            $features_names[] = $id_feature;
+
+            $feature_array[$id_feature] = array(
+                'type_lite' => self::FILTER_TYPE_FEATURE,
+                'type' => self::FILTER_TYPE_FEATURE,
+                'id_key' => $id_feature,
+                'values' => array(),
+                'name' => '',
+                'filter_show_limit' => $feature_filter['filter_show_limit'],
+                'filter_type' => $feature_filter['filter_type'],
+                'position' => $feature_filter['position']
+            );
+
+            $aggregation = $this->getAggregation('feature_'.$id_feature);
+
+            if (!$aggregation)
+                continue;
+
+            foreach ($aggregation as $id_feature_value => $nbr) {
+                if ($nbr == 0 && $this->hide_0_values) {
+                    continue;
+                }
+
+                $hide_filter = false;
+
+                $features_values_names[] = $id_feature_value;
+
+                $feature_array[$id_feature]['values'][$id_feature_value] = array(
+                    'nbr' => (int)$nbr,
+                    'name' => ''
+                );
+
+                if (!empty($selected_filters[self::FILTER_TYPE_FEATURE])
+                    && array_search($id_feature.'_'.$id_feature_value, $selected_filters[self::FILTER_TYPE_FEATURE])
+                    !== false
+                ) {
+                    $feature_array[$id_feature]['values'][$id_feature_value]['checked'] = true;
+                }
+            }
+
+            if ($hide_filter) {
+                unset($feature_array[$id_feature]);
+                continue;
+            }
+        }
+
+        $features_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $features_names,
+            'feature_lang',
+            'id_feature'
+        );
+        $features_values_names = $this->getModuleInstance()->getObjectsNamesByIds(
+            $features_values_names,
+            'feature_value_lang',
+            'id_feature_value',
+            'value'
+        );
+
+        //adding names to values
+        foreach ($feature_array as &$feature) {
+            $feature['name'] = isset($features_names[$feature['id_key']]) ? $features_names[$feature['id_key']] : '';
+
+            foreach ($feature['values'] as $id_feature_value => &$fields) {
+                $fields['name'] = isset($features_values_names[$id_feature_value])
+                    ? $features_values_names[$id_feature_value]
+                    : '';
+            }
+        }
+
+        return $feature_array;
+    }
+
+    /**
+     * @param $filter array categories filter data
+     * @return array categories filter data to be used in template
+     */
+    protected function getCategoryFilter($filter)
+    {
+        if (isset($filter[0])) {
+            $filter = $filter[0];
+        }
+
+        $aggregation = $this->getAggregation('categories');
+
+        if (empty($aggregation))
+            return array();
+
+        $subcategories = $this->getSubcategories();
+
+        if (empty($subcategories))
+            return array();
+
+        $selected_filters = $this->getSelectedFilters();
+
+        $categories_with_products_count = 0;
+        $values = array();
+
+        foreach ($subcategories as $id_subcategory => $subcategory) {
+            if (isset($aggregation[$id_subcategory])) {
+                // Checks if filter should not be displayed
+                if ($this->hide_0_values && $aggregation[$id_subcategory] < 1) {
+                    continue;
+                }
+
+                $values[$id_subcategory] = array(
+                    'name' => $subcategory['name'],
+                    'nbr' => $aggregation[$id_subcategory]
+                );
+
+                if ($aggregation[$id_subcategory] > 0) {
+                    $categories_with_products_count++;
+                }
+
+                if (isset($selected_filters['category']) && in_array($id_subcategory, $selected_filters['category']))
+                    $values[$id_subcategory]['checked'] = true;
+            }
+        }
+
+        // If there are no categories to display - return empty array
+        if ($this->hide_0_values && !$categories_with_products_count)
+            return array();
+
+        $category_filter = array(
+            'type_lite' => 'category',
+            'type' => 'category',
+            'id_key' => 0,
+            'name' => $this->getModuleInstance()->l('Categories', self::FILENAME),
+            'values' => $values,
+            'filter_show_limit' => $filter['filter_show_limit'],
+            'filter_type' => $filter['filter_type'],
+            'position' => $filter['position']
+        );
+
+        return $category_filter;
+    }
+
+    /**
+     * @param bool|false $all if true, all categories will be returned (to the deepest),
+     * if yes - return categories only from the 1st level
+     * @return mixed
+     */
+    public function getSubcategories($all = false)
+    {
+        if (!isset(self::$cache['subcategories_'.$this->id_category.'_'.(int)$all])) {
+            $subcategories = array();
+
+            if ($all) {
+                if (Group::isFeatureActive()) {
+                    $groups = FrontController::getCurrentCustomerGroups();
+                }
+
+                $categories = Category::getNestedCategories(
+                    $this->id_category,
+                    Context::getContext()->language->id,
+                    true,
+                    isset($groups) ? $groups : null
+                );
+
+                if (isset($categories[$this->id_category]) && !empty($categories[$this->id_category]['children'])) {
+                    $subcategories = $this->getChildrenCategoriesRecursive($categories[$this->id_category]['children']);
+                }
+            } else {
+                $sql_groups_where = '';
+                $sql_groups_join = '';
+                if (Group::isFeatureActive()) {
+                    $sql_groups_join = 'LEFT JOIN `'._DB_PREFIX_.'category_group` cg ON (cg.`id_category` = c.`id_category`)';
+                    $groups = FrontController::getCurrentCustomerGroups();
+                    $sql_groups_where = 'AND cg.`id_group` '.(count($groups) ? 'IN ('.implode(',',
+                                $groups).')' : '='.(int)Group::getCurrent()->id);
+                }
+
+                $resource = Db::getInstance()->query('
+                SELECT c.`id_category`, cl.`name`
+                FROM `'._DB_PREFIX_.'category` c
+                LEFT JOIN `'._DB_PREFIX_.'category_lang` cl ON c.`id_category` = cl.`id_category`
+                JOIN `'._DB_PREFIX_.'category_shop` cs ON cs.`id_category` = c.`id_category`
+                '.$sql_groups_join.'
+                WHERE cl.`id_lang` = "'.(int)Context::getContext()->language->id.'"
+                    AND cs.`id_shop` = "'.(int)Context::getContext()->shop->id.'"
+                    AND c.`id_parent` = "'.(int)$this->id_category.'"
+                    '.$sql_groups_where.'
+            ');
+
+                while ($row = Db::getInstance()->nextRow($resource)) {
+                    $subcategories[$row['id_category']] = $row;
+                }
+            }
+
+            self::$cache['subcategories_'.$this->id_category.'_'.(int)$all] = $subcategories;
+        }
+
+        return self::$cache['subcategories_'.$this->id_category.'_'.(int)$all];
+    }
+
+    public function getChildrenCategoriesRecursive($categories)
+    {
+        $subcategories = array();
+
+        foreach ($categories as $category) {
+            if (!empty($category['children'])) {
+                $subcategories = array_merge(
+                    $subcategories,
+                    $this->getChildrenCategoriesRecursive($category['children'])
+                );
+            }
+
+            $subcategories[$category['id_category']] = array(
+                'id_category' => $category['id_category'],
+                'name' => $category['name']
             );
         }
 
-        //completing weight query
-        if ($weight_query)
-            $query[] = array('range' => array(
-                'weight' => $weight_query
-            ));
+        return $subcategories;
+    }
 
-        //completing categories query
-        if ($categories)
-            $filter_query[] = array('or' => $categories);
-        else
-            $query[] = array(
-                'term' => array(
-                    'categories' => Tools::getValue('id_elasticsearch_category', Tools::getValue('id_category'))
-                )
+    public function formatFilterValues(&$filter_values)
+    {
+        $formatted_filter = array();
+
+        foreach ($filter_values as $filter_row) {
+            $formatted_filter[$filter_row['id_value']] = $filter_row;
+        }
+
+        $filter_values = $formatted_filter;
+    }
+
+    /**
+     * Returns count of products for each filter
+     * @return array
+     */
+    public function getAggregations()
+    {
+        if ($this->filters_products_counts === null) {
+            $query_all = array(
+                'aggs' => $this->getFiltersProductsCountsAggregationQuery($this->enabled_filters)
             );
 
-        return $query;
-    }
+            $result = AbstractFilter::$search_service->search(
+                'products',
+                $query_all,
+                0,
+                null,
+                null,
+                null,
+                null,
+                true
+            );
 
-    public function changeQueryCategory(&$query, $new_category)
-    {
-        if (!$query)
-            $query['term']['categories'] = $new_category;
-        else
-        {
-            $length = count($query);
+            if (!isset($result['aggregations'])) {
+                $this->filters_products_counts = array();
+            } else {
+                $aggregations = array();
 
-            for ($i = 0; $i < $length; $i++)
-                foreach ($query[$i] as &$row)
-                    foreach (array_keys($row) as &$term)
-                        if ($term == 'categories')
-                            $row[$term] = $new_category;
+                foreach ($result['aggregations'] as $alias => $aggregation) {
+                    if (isset($aggregation[$alias]['buckets'])
+                        && !in_array($alias, array('in_stock', 'out_of_stock'))
+                    ) {
+                        $aggregations[$alias] = array();
+
+                        foreach ($aggregation[$alias]['buckets'] as $bucket) {
+                            $aggregations[$alias][$bucket['key']] = $bucket['doc_count'];
+                        }
+                    } elseif (isset($aggregation[$alias]['value'])) {
+                        $aggregations[$alias] = $aggregation[$alias]['value'];
+                    } elseif (isset($aggregation['doc_count'])) {
+                        $aggregations[$alias] = $aggregation['doc_count'];
+                    } else {
+                        $aggregations[$alias] = 0;
+                    }
+                }
+
+                $this->filters_products_counts = $aggregations;
+            }
         }
+
+        return $this->filters_products_counts;
     }
 
-    public function getProducts($selected_filters, &$products, &$nb_products, &$p, &$n, &$pages_nb, &$start, &$stop, &$range)
+    /**
+     * Gets aggregation value(s) by given name
+     * @param $name - aggregation name
+     * @param bool $partial_name is the provided name ($name) partial
+     * @return array|int
+     */
+    public function getAggregation($name, $partial_name = false)
     {
-        $products = $this->getProductByFilters($selected_filters);
-        $products = Product::getProductsProperties((int)$this->context->cookie->id_lang, $products);
-        $nb_products = $this->getProductByFilters($selected_filters, true);
-        $range = 2; /* how many pages around page selected */
+        $aggregations = $this->getAggregations();
 
-        $n = (int)Tools::getValue('n', Configuration::get('PS_PRODUCTS_PER_PAGE'));
-        $p = $this->page;
+        if ($partial_name) {
+            //caching the result
+            $cache_key = 'aggregation_'.$name;
 
-        if ($n <= 0)
-            $n = 1;
+            if (!isset(self::$cache[$cache_key])) {
+                $result = array();
+                foreach ($aggregations as $key => $aggregation) {
+                    if (Tools::strpos($key, $name) !== false) {
+                        $result[$key] = $aggregation;
+                    }
+                }
 
-        if ($p < 0)
-            $p = 0;
+                self::$cache[$cache_key] = $result;
+            }
 
-        if ($p > ($nb_products / $n))
-            $p = ceil($nb_products / $n);
-
-        $pages_nb = ceil($nb_products / (int)$n);
-        $start = (int)$p - (int)$range;
-
-        if ($start < 1)
-            $start = 1;
-
-        $stop = (int)$p + (int)$range;
-
-        if ($stop > $pages_nb)
-            $stop = (int)$pages_nb;
-
-        foreach ($products as &$product)
-        {
-            if ($product['id_product_attribute'] && isset($product['product_attribute_minimal_quantity']))
-                $product['minimal_quantity'] = $product['product_attribute_minimal_quantity'];
+            return self::$cache[$cache_key];
+        } elseif (!isset($aggregations[$name])) {
+            return 0;
         }
-    }
 
-    private function showPriceFilter()
-    {
-        return Group::getCurrent()->show_prices;
-    }
-
-    private function filterVar($value)
-    {
-        if (version_compare(_PS_VERSION_, '1.6.0.7', '>=') === true)
-            return Tools::purifyHTML($value);
-        else
-            return filter_var($value, FILTER_SANITIZE_STRING);
+        return $aggregations[$name];
     }
 }

@@ -211,11 +211,6 @@ class ElasticSearch extends Module
 
     public function getContent()
     {
-        if (Tools::isSubmit('test'))
-        {
-            $this->test();
-        }
-
         Module::$classInModule['AdminElasticSearchSettingscontroller'] = false;
         Module::$classInModule['AdminElasticSearchFiltercontroller'] = false;
 
@@ -806,13 +801,8 @@ class ElasticSearch extends Module
 
     public function hookDisplayLeftColumn()
     {
-        //@todo remove test code from this function
-        $use_old = false;
-
         try
         {
-$t = microtime(true);
-
             if (!Configuration::get('ELASTICSEARCH_DISPLAY_FILTER'))
                 return '';
 
@@ -824,44 +814,19 @@ $t = microtime(true);
             $this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.'filter.css');
             $this->context->controller->addJQueryPlugin('scrollTo');
 
-            if (!$use_old)
-            {
-                require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
-                $elasticsearch_filter = new ReworkedElasticSearchFilter();
+            require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
+            $elasticsearch_filter = new ElasticSearchFilter();
 
-                $res = $elasticsearch_filter->getFiltersBlock(Tools::getValue('id_category'));
-            }
-            else
-            {
-                require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
-                $elasticsearch_filter = new ElasticSearchFilter();
-
-                $res = $elasticsearch_filter->generateFiltersBlock($elasticsearch_filter->getSelectedFilters());
-            }
-
-p(microtime(true) - $t);
-
-            return $res;
+            return $elasticsearch_filter->getFiltersBlock(Tools::getValue('id_category'));
         } catch (Exception $e) {
             if (!isset($elasticsearch_filter)) {
-                //@todo rename class
-                require_once(_ELASTICSEARCH_CLASSES_DIR_.'ReworkedElasticSearchFilter.php');
-                $elasticsearch_filter = new ReworkedElasticSearchFilter();
+                require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
+                $elasticsearch_filter = new ElasticSearchFilter();
             }
 
             $elasticsearch_filter->log('Unable to display filter column (hookDisplayLeftColumn). Message: '.$e->getMessage());
             return '';
         }
-    }
-
-    public function test()
-    {
-//		$this->deleteAllProducts();
-//		$this->createTestProducts();
-        $this->createTestFeatures();
-//        $search = $this->getSearchServiceObject();
-//        d($search->search('products', $search->buildSearchQuery('all')));
-        die;
     }
 
     public function getObjectsNamesByIds(array $ids, $table, $id_column, $name_column = 'name', $use_lang = true)
@@ -933,157 +898,5 @@ p(microtime(true) - $t);
             $result[$row['id_attribute']] = $row['color'];
 
         return $result;
-    }
-
-    public function deleteAllProducts()
-    {
-        $tables = array('product', 'product_shop', 'product_lang', 'category_product', 'product_attribute_combination');
-
-        foreach ($tables as $table)
-            Db::getInstance()->execute('TRUNCATE TABLE `'._DB_PREFIX_.$table.'`');
-    }
-
-    public function createTestProducts($number = 8000, $id_shop = 1)
-    {
-        $p_sql = 'INSERT INTO `'._DB_PREFIX_.'product` (id_product,id_supplier,id_manufacturer,id_category_default,id_shop_default,id_tax_rules_group,
-        on_sale,price,wholesale_price,weight,out_of_stock,`active`,redirect_type,`condition`) VALUES ';
-        $p_s_sql = 'INSERT INTO `'._DB_PREFIX_.'product_shop` (id_product,id_shop,id_category_default,price,wholesale_price,`active`,redirect_type,
-        `condition`) VALUES ';
-        $p_l_sql = 'INSERT INTO `'._DB_PREFIX_.'product_lang` (id_product,id_shop,id_lang,link_rewrite,`name`) VALUES ';
-        $c_p_sql = 'INSERT INTO `'._DB_PREFIX_.'category_product` (id_category,id_product) VALUES ';
-
-        $p_values = array();
-        $p_l_values = array();
-        $p_s_values = array();
-        $c_p_values = array();
-
-        $cond = array(
-            'new', 'refurbished', 'used'
-        );
-        $names1 = array('Dress', 'Blouse', 'Shirt', 'Skirt', 'Top', 'Hat', 'Pants', 'Socks', 'Shoe');
-        $names2 = array('Evening', 'Morning', 'Leasure', 'Nighttime', 'Vacation', 'Office');
-        $names3 = array('Great', 'Amazing', 'Bad', 'Short', 'Long', 'Colorful', 'Comfortable');
-
-        $categories = Category::getSimpleCategories($this->context->language->id);
-        $cats = array();
-
-        foreach ($categories as $cat)
-        {
-            if (!in_array($cat['id_category'], array(2)))
-                $cats[$cat['id_category']] = $cat['name'];
-        }
-
-        $next_product_id = (int)(Db::getInstance()->getValue('SELECT MAX(id_product) FROM `'._DB_PREFIX_.'product`')) + 1;
-
-        for ($i = 0; $i < $number; $i++)
-        {
-            $price = (rand(10, 5000)/10);
-            $cat = (int)array_rand($cats, 1);
-            $weight = (rand(10, 2000)/10);
-            $oos = rand(0,2);
-            $condition = $cond[array_rand($cond, 1)];
-            $name = $names3[array_rand($names3)].' '.$names2[array_rand($names2)].' '.$names1[array_rand($names1)];
-            $link_rewrite = urlencode(strtolower($name));
-
-            $p_values[] = '('.$next_product_id.',1,1,"'.$cat.'","'.(int)$id_shop.'",1,"0","'.round($price,3).'","'.round(($price/3),3).'","'.$weight.'","'.$oos.'",1,"404","'.$condition.'")';
-            $p_s_values[] = '('.$next_product_id.',"'.(int)$id_shop.'",'.$cat.',"'.round($price, 3).'","'.round(($price/3),3).'",1,"404","'.$condition.'")';
-            $p_l_values[] = '('.$next_product_id.',"'.(int)$id_shop.'",1,"'.$link_rewrite.'", "'.$name.'")';
-            $c_p_values[] = '('.$cat.', '.$next_product_id.')';
-            $next_product_id++;
-        }
-
-        $p_sql .= implode(',',$p_values);
-        $p_s_sql .= implode(',',$p_s_values);
-        $p_l_sql .= implode(',',$p_l_values);
-        $c_p_sql .= implode(',',$c_p_values);
-
-        $res = Db::getInstance()->execute($p_sql);
-        $res &= Db::getInstance()->execute($p_s_sql);
-        $res &= Db::getInstance()->execute($p_l_sql);
-        $res &= Db::getInstance()->execute($c_p_sql);
-
-        var_dump($res);
-        die;
-    }
-
-    public function createTestFeatures($features_nbr = 30, $values_nbr = 300, $id_shop = 1)
-    {
-        $table = 'feature';
-        $f_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'` (id_feature,position) VALUES ';
-        $f_s_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_shop` (id_feature,id_shop) VALUES ';
-        $f_l_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_lang` (id_feature,id_lang,`name`) VALUES ';
-        $f_v_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_value` (id_feature_value,id_feature) VALUES ';
-        $f_vl_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_value_lang` (id_feature_value,id_lang,`value`) VALUES ';
-        $f_p_sql = 'INSERT IGNORE INTO `'._DB_PREFIX_.$table.'_product` (id_feature,id_product,id_feature_value) VALUES ';
-
-        $next_id = (int)(Db::getInstance()->getValue('SELECT MAX(id_feature) FROM `'._DB_PREFIX_.$table.'`')) + 1;
-        $next_id_fv = (int)(Db::getInstance()->getValue('SELECT MAX(id_feature_value) FROM `'._DB_PREFIX_.$table.'_value`')) + 1;
-        $position = 0;
-        $id_lang = 1;
-
-        $names1 = array('Abandoned','Able','Active','Aged','World','System','Computer','Food','Understanding','Blond');
-        $names2 = array('Yes','No','Good','Nice','Colorful','Fun','Happy','Big','Small','Great');
-
-        $f_values = array();
-        $f_s_values = array();
-        $f_l_values = array();
-        $f_v_values = array();
-        $f_vl_values = array();
-        $f_p_values = array();
-        $val_per_feat = ceil($values_nbr / $features_nbr);
-
-        for ($i = 0; $i < $features_nbr; $i++)
-        {
-            $feature_name = $names1[array_rand($names1, 1)];
-
-            $f_values[] = '('.$next_id.','.$position.')';
-            $f_s_values[] = '('.$next_id.','.$id_shop.')';
-            $f_l_values[] = '('.$next_id.','.$id_lang.',"'.$feature_name.'")';
-
-            for ($j = 0; $j < $val_per_feat; $j++)
-            {
-                $products = $this->getRandomProductId(rand(30,70));
-                if (!$products)
-                    return false;
-                $feature_value = $names2[array_rand($names2, 1)];
-                $f_v_values[] = '('.$next_id_fv.','.$next_id.')';
-                $f_vl_values[] = '('.$next_id_fv.','.$id_lang.',"'.$feature_value.'")';
-
-                foreach ($products as $product)
-                    $f_p_values[] = '('.$next_id.','.(int)$product['id_product'].','.$next_id_fv.')';
-
-                $next_id_fv++;
-            }
-
-            $next_id++;
-        }
-
-        $f_sql .= implode(',', $f_values);
-        $f_s_sql .= implode(',', $f_s_values);
-        $f_l_sql .= implode(',', $f_l_values);
-        $f_v_sql .= implode(',', $f_v_values);
-        $f_vl_sql .= implode(',', $f_vl_values);
-        $f_p_sql .= implode(',', $f_p_values);
-
-        Db::getInstance()->execute('START TRANSACTION');
-
-        $res = Db::getInstance()->execute($f_sql);
-        $res &= Db::getInstance()->execute($f_s_sql);
-        $res &= Db::getInstance()->execute($f_l_sql);
-        $res &= Db::getInstance()->execute($f_v_sql);
-        $res &= Db::getInstance()->execute($f_vl_sql);
-        $res &= Db::getInstance()->execute($f_p_sql);
-
-        if ($res)
-            Db::getInstance()->execute('COMMIT');
-        else
-            Db::getInstance()->execute('ROLLBACK');
-
-        var_dump($res);
-    }
-
-    public function getRandomProductId($limit = 1)
-    {
-        return Db::getInstance()->executeS('SELECT id_product FROM `'._DB_PREFIX_.'product` ORDER BY RAND() LIMIT 0, '.(int)$limit);
     }
 }
