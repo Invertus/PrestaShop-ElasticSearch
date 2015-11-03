@@ -110,8 +110,21 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
         $this->filters = $filters;
 
+        $selected_filters = $this->getSelectedFilters();
+
+        //@todo unset price and weight filters from $selected_filters if they are on default values
+        // it might not be necessary though
+
+        $filters_count = 0;
+
+        foreach ($selected_filters as $selected_filter) {
+            $filters_count += count($selected_filter);
+        }
+
         Context::getContext()->smarty->assign(array(
             'filters' => $filters,
+            'selected_filters' => $selected_filters,
+            'n_filters' => $filters_count,
             'nbr_filterBlocks' => count($this->enabled_filters),
             'id_elasticsearch_category' => $id_category,
             'elasticsearchSliderName' => $translate,
