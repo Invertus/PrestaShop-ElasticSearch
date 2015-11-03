@@ -483,11 +483,49 @@ class ReworkedElasticSearchFilter extends AbstractFilter
         $query['bool']['must'] = $this->getQueryFromSearchValues($search_values);
 
         //completing categories query
-        $query['bool']['must'][] = array(
-            'term' => array(
-                'categories' => $this->id_category
-            )
-        );
+        $query['bool']['must'] = $this->getCurrentCategoryQuery();
+
+        return $query;
+    }
+
+    /**
+     * Gets ElasticSearch query for current category. If full tree setting is enabled, includes
+     * subcategories in query too.
+     */
+    public function getCurrentCategoryQuery()
+    {
+        if (!$this->full_tree) {
+            return array(
+                'term' => array(
+                    'categories' => $this->id_category
+                )
+            );
+        }
+
+        $subcategories = $this->getSubcategories(true);
+
+        if ($subcategories) {
+            $query = array(
+                'bool' => array(
+                    'should' => array()
+                )
+            );
+
+            foreach ($subcategories as $subcategory) {
+                $query['bool']['should'][] = array(
+                    'term' => array(
+                        'categories' => $subcategory['id_category']
+                    )
+                );
+            }
+
+        } else {
+            $query = array(
+                'term' => array(
+                    'categories' => $this->id_category
+                )
+            );
+        }
 
         return $query;
     }
