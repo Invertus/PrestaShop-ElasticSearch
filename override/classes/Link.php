@@ -19,8 +19,8 @@
 
 class Link extends LinkCore
 {
-	public function getelasticsearchLink()
-	{
-		return $this->getModuleLink('elasticsearch', 'elasticsearch');
-	}
+    public function getelasticsearchLink()
+    {
+        return $this->getModuleLink('elasticsearch', 'elasticsearch');
+    }
 }

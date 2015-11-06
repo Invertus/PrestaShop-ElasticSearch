@@ -11,9 +11,6 @@
 *  @license   --
 *  International Registered Trademark & Property of INVERTUS, UAB
 *}
-<script>
-	var elasticsearch_ajax_uri = '{$smarty.const._ELASTICSEARCH_AJAX_URI_|escape:'htmlall':'UTF-8'}';
-</script>
 
 {if $nbr_filterBlocks != 0}
 	<div id="elasticsearch_block_left" class="block">
@@ -81,13 +78,13 @@
 														<input class="color-option {if isset($value.checked) && $value.checked}on{/if} {if !$value.nbr}disable{/if}" type="button" name="elasticsearch_{$filter.type_lite}_{$id_value}" data-rel="{$id_value}_{$filter.id_key}" id="elasticsearch_id_attribute_group_{$id_value}" {if !$value.nbr}disabled="disabled"{/if} style="background: {if isset($value.color)}{if file_exists($smarty.const._PS_ROOT_DIR_|cat:"/img/co/$id_value.jpg")}url(img/co/{$id_value}.jpg){else}{$value.color}{/if}{else}#CCC{/if};" />
 														{if isset($value.checked) && $value.checked}<input type="hidden" name="elasticsearch_{$filter.type_lite}_{$id_value}" value="{$id_value}" />{/if}
 													{else}
-														<input type="checkbox" class="checkbox" name="elasticsearch_{$filter.type_lite}_{$id_value}" id="elasticsearch_{$filter.type_lite}{if $id_value || $filter.type == 'quantity'}_{$id_value}{/if}" value="{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}"{if isset($value.checked)} checked="checked"{/if}{if !$value.nbr} disabled="disabled"{/if} />
+														<input type="checkbox" class="checkbox" name="elasticsearch_{$filter.type_lite}_{$id_value}" id="elasticsearch_{$filter.type_lite}{if $id_value || $filter.type == 'quantity'}_{$id_value}{/if}" value="{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}"{if isset($value.checked) && $value.checked} checked="checked"{/if}{if !$value.nbr} disabled="disabled"{/if} />
 													{/if}
 													<label for="elasticsearch_{$filter.type_lite}_{$id_value}"{if !$value.nbr} class="disabled"{else}{if isset($filter.is_color_group) && $filter.is_color_group} name="elasticsearch_{$filter.type_lite}_{$id_value}" class="elasticsearch_color" data-rel="{$id_value}_{$filter.id_key}"{/if}{/if}>
 														{if !$value.nbr}
 															{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}
 														{else}
-															<a href="{$value.link}"{if $value.rel|trim != ''} data-rel="{$value.rel}"{/if}>{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
+															<a href="javascript:void(0);">{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
 														{/if}
 													</label>
 												</li>
@@ -102,13 +99,13 @@
 															<input class="radio color-option {if isset($value.checked) && $value.checked}on{/if} {if !$value.nbr}disable{/if}" type="button" name="elasticsearch_{$filter.type_lite}_{$id_value}" data-rel="{$id_value}_{$filter.id_key}" id="elasticsearch_id_attribute_group_{$id_value}" {if !$value.nbr}disabled="disabled"{/if} style="background: {if isset($value.color)}{if file_exists($smarty.const._PS_ROOT_DIR_|cat:"/img/co/$id_value.jpg")}url(img/co/{$id_value}.jpg){else}{$value.color}{/if}{else}#CCC{/if};"/>
 															{if isset($value.checked) && $value.checked}<input type="hidden" name="elasticsearch_{$filter.type_lite}_{$id_value}" value="{$id_value}" />{/if}
 														{else}
-															<input type="radio" class="radio elasticsearch_{$filter.type_lite}_{$id_value}" name="elasticsearch_{$filter.type_lite}{if $filter.id_key}_{$filter.id_key}{else}_1{/if}" id="elasticsearch_{$filter.type_lite}{if $id_value || $filter.type == 'quantity'}_{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}{/if}" value="{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}"{if isset($value.checked)} checked="checked"{/if}{if !$value.nbr} disabled="disabled"{/if} />
+															<input type="radio" class="radio elasticsearch_{$filter.type_lite}_{$id_value}" name="elasticsearch_{$filter.type_lite}{if $filter.id_key}_{$filter.id_key}{else}_1{/if}" id="elasticsearch_{$filter.type_lite}{if $id_value || $filter.type == 'quantity'}_{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}{/if}" value="{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}"{if isset($value.checked) && $value.checked} checked="checked"{/if}{if !$value.nbr} disabled="disabled"{/if} />
 														{/if}
 														<label for="elasticsearch_{$filter.type_lite}{if $id_value || $filter.type == 'quantity'}_{$id_value}{if $filter.id_key}_{$filter.id_key}{/if}{/if}"{if !$value.nbr} class="disabled"{else}{if isset($filter.is_color_group) && $filter.is_color_group} name="elasticsearch_{$filter.type_lite}_{$id_value}" class="elasticsearch_color" data-rel="{$id_value}_{$filter.id_key}"{/if}{/if}>
 															{if !$value.nbr}
 																{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}
 															{else}
-																<a href="{$value.link}"{if $value.rel|trim != ''} data-rel="{$value.rel}"{/if}>{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
+																<a href="javascript:void(0);">{$value.name|escape:'html':'UTF-8'}{if $elasticsearch_show_qties}<span> ({$value.nbr})</span>{/if}</a>
 															{/if}
 														</label>
 													</li>
@@ -214,13 +211,15 @@
 	</div>
 {/if}
 
+{strip}
 {if $nbr_filterBlocks != 0}
-	{strip}
-		{addJsDef param_product_url='#'|cat:$param_product_url}
-		{addJsDef blocklayeredSliderName=$blocklayeredSliderName}
+	{addJsDef param_product_url='#'}
+	{addJsDef blocklayeredSliderName=$elasticsearchSliderName}
 
-		{if isset($filters) && $filters|@count}
-			{addJsDef filters=$filters}
-		{/if}
-	{/strip}
+	{if isset($filters) && $filters|@count}
+		{addJsDef filters=$filters}
+	{/if}
 {/if}
+
+{addJsDef elasticsearch_ajax_uri=$smarty.const._ELASTICSEARCH_AJAX_URI_|escape:'htmlall':'UTF-8'}
+{/strip}
