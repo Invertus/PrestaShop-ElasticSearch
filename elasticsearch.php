@@ -505,12 +505,17 @@ class ElasticSearch extends Module
     private function indexProducts($delete_old = true)
     {
         $search = $this->getSearchServiceObject();
-        $search->indexAllProducts($delete_old);
+        $result = $search->indexAllProducts($delete_old);
 
-        if (!$search->errors)
+        if (!$search->errors && $result) {
             $this->html .= $this->displayConfirmation($this->l('Products indexed successfully'));
-        else
+        }
+        else {
+            if (!$search->errors) {
+                $search->errors[] = $this->l('Unable to index products. Check error logs for more information');
+            }
             $this->html .= $this->renderErrors($search->errors);
+        }
     }
 
     private function addTreeJs()
