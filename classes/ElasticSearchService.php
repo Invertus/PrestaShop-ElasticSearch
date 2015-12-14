@@ -84,12 +84,7 @@ class ElasticSearchService extends SearchService
         if (!$this->client || !$this->host)
             return false;
 
-        $response = Tools::jsonDecode(Tools::file_get_contents($this->host));
-
-        if (!$response)
-            return false;
-
-        return isset($response->status) && $response->status = '200';
+        return $this->client->ping();
     }
 
     /**
