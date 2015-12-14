@@ -156,7 +156,6 @@ abstract class AbstractFilter extends Brad\AbstractLogger
      */
     public function ajaxCall()
     {
-        $t = microtime(true);
         $id_category = (int)Tools::getValue('id_elasticsearch_category');
         //todo avoid using category object
         $category = new Category($id_category, (int)Context::getContext()->cookie->id_lang);
@@ -209,8 +208,7 @@ abstract class AbstractFilter extends Brad\AbstractLogger
             'current_friendly_url' => $this->getCurrentFriendlyUrl(),
             'filters' => $this->getFilters(),
             'nbRenderedProducts' => $pagination_variables['nb_products'],
-            'nbAskedProducts' => $pagination_variables['n'],
-            'time' => microtime(true) - $t
+            'nbAskedProducts' => $pagination_variables['n']
         );
     }
 

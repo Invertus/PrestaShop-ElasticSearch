@@ -345,7 +345,13 @@ class ElasticSearchFilter extends AbstractFilter
 
     public function extractProductField($product, $field_name)
     {
-        return isset($product['fields']['data'][0][$field_name]) ? $product['fields']['data'][0][$field_name] : null;
+        if (isset($product['_source'][$field_name]))
+            return $product['_source'][$field_name];
+
+        if (isset($product['fields']['data'][0][$field_name]))
+            return $product['fields']['data'][0][$field_name];
+
+        return null;
     }
 
     /**
@@ -746,10 +752,10 @@ class ElasticSearchFilter extends AbstractFilter
         $partial_fields = array();
 
         if ($required_fields) {
-            $partial_fields['data'] = array('include' => array());
+            $partial_fields = array();
 
             foreach ($required_fields as $field) {
-                $partial_fields['data']['include'][] = $field;
+                $partial_fields[] = $field;
             }
         }
 

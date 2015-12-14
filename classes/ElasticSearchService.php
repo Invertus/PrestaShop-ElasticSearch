@@ -23,6 +23,7 @@ class ElasticSearchService extends SearchService
     const FILENAME = 'ElasticSearchService';
 
     public $module_instance = null;
+    public $version;
 
     private $host = null;
 
@@ -77,6 +78,20 @@ class ElasticSearchService extends SearchService
         );
 
         $this->client = new Elasticsearch\Client($params);
+
+        try {
+            $response = Tools::jsonDecode(Tools::file_get_contents($this->host));
+
+            if (!$response) {
+                return false;
+            }
+
+            $this->version = $response->version->number;
+        } catch (Exception $e) {
+            return false;
+        }
+
+        return true;
     }
 
     public function testSearchServiceConnection()
@@ -515,8 +530,9 @@ class ElasticSearchService extends SearchService
         if ($type !== null)
             $params['type'] = $type;
 
-        if ($partial_fields)
-            $params['body']['partial_fields'] = $partial_fields;
+        if ($partial_fields) {
+            $params['body']['_source'] = $partial_fields;
+        }
 
         if ($filter !== null)
             $params['body']['filter'] = $filter;
@@ -531,7 +547,7 @@ class ElasticSearchService extends SearchService
         {
             if ($pagination === null && $from === null)
             {
-                $params['search_type'] = 'count';
+                $params['search_type'] = 'query_then_fetch';
                 return (int)$this->client->search($params)['hits']['total'];
             }
 
@@ -540,7 +556,7 @@ class ElasticSearchService extends SearchService
 
             if ($aggregation)
             {
-                $params['search_type'] = 'count';
+                $params['search_type'] = 'query_then_fetch';
                 return $this->client->search($params);
             }
 
@@ -638,9 +654,15 @@ class ElasticSearchService extends SearchService
         {
             $index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']] = array(
                 'type' => 'string',
-                'index_analyzer' => 'index_analyzer',
                 'search_analyzer' => 'search_analyzer'
             );
+
+            // Compatibility with ES 2.0.0
+            if (version_compare($this->version, '2.0.0', '<')) {
+                $index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']]['index_analyzer'] = 'index_analyzer';
+            } else {
+                $index_params['body']['mappings']['products']['properties']['search_keywords_'.$lang['id_lang']]['analyzer'] = 'index_analyzer';
+            }
 
             $index_params['body']['mappings']['products']['properties']['name_'.$lang['id_lang']] = array(
                 'type' => 'string'
