@@ -84,7 +84,11 @@ class ElasticSearchService extends SearchService
         if (!$this->client || !$this->host)
             return false;
 
-        return $this->client->ping();
+        try {
+            return $this->client->ping();
+        } catch (Exception $e) {
+            return false;
+        }
     }
 
     /**
