@@ -615,6 +615,9 @@ class ElasticSearch extends Module
         if (Shop::getContext() != Shop::CONTEXT_SHOP)
             $this->context->smarty->assign('shop_restriction', true);
 
+
+        $this->context->smarty->assign('es_version', $this->getSearchServiceObject()->version);
+
         $this->html .= $this->context->smarty->fetch(_ELASTICSEARCH_TEMPLATES_DIR_.'admin/form.tpl');
     }
 
