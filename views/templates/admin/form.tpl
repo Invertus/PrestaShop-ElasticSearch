@@ -30,6 +30,11 @@
 			<i class="icon icon-cogs"></i>
 			{l s='Elastic Search actions' mod='elasticsearch'}
 		</h3>
+        {if !empty($es_version)}
+            <p class="alert alert-info">
+                {l s='Elastic Search version: %1s' mod='elasticsearch' sprintf=$es_version}
+            </p>
+        {/if}
 		{if isset($shop_restriction) && $shop_restriction}
 			<p class="alert alert-warning">
 				{l s='Elastic Search inexing is disabled when all shops or group of shops are selected' mod='elasticsearch'}
