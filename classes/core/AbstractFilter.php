@@ -117,8 +117,10 @@ abstract class AbstractFilter extends Brad\AbstractLogger
 
         $filters_count = 0;
 
-        foreach ($selected_filters as $selected_filter) {
-            $filters_count += count($selected_filter);
+        if ($selected_filters) {
+            foreach ($selected_filters as $selected_filter) {
+                $filters_count += count($selected_filter);
+            }
         }
 
         Context::getContext()->smarty->assign(array(
