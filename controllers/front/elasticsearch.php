@@ -92,7 +92,7 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
         if (!$search_value)
         {
             $this->context->smarty->assign('warning_message', $this->module_instance->l('Please enter a search keyword', self::FILENAME));
-            return array();
+            return $no_filter ? 0 : array();
         }
 
         $default_products_per_page = max(1, (int)Configuration::get('PS_PRODUCTS_PER_PAGE'));
