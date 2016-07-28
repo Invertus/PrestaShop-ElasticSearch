@@ -145,6 +145,15 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
                 $product_obj->allow_oosp = false;
                 $product_obj->id_product = (int)$product_obj->id;
                 $product_obj->id_product_attribute = $product_obj->getAttributeCombinations((int)$this->context->language->id);
+                $product_obj->price_without_reduction = Product::getPriceStatic(
+                    $product_obj->id,
+                    Product::$_taxCalculationMethod == PS_TAX_EXC ? false : true,
+                    null,
+                    Product::$_taxCalculationMethod == PS_TAX_EXC ? 2 : 6,
+                    null,
+                    false,
+                    false
+                );
 
                 $search_result[] = (array)$product_obj;
             }
