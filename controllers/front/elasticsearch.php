@@ -129,7 +129,7 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
         $result = $search->search($type, $query, $pagination, $from, $order_by, $order_way);
 
         if ($no_filter)
-            return $result;
+            return $result ? $result : 0;
 
         $search_result = array();
 
