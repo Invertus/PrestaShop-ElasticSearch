@@ -1362,7 +1362,7 @@ class ElasticSearchFilter extends AbstractFilter
                     $this->id_category,
                     Context::getContext()->language->id,
                     true,
-                    isset($groups) ? $groups : null
+                    isset($groups) && $groups ? $groups : null
                 );
 
                 if (isset($categories[$this->id_category]) && !empty($categories[$this->id_category]['children'])) {
