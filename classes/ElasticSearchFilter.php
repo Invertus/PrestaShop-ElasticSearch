@@ -336,7 +336,16 @@ class ElasticSearchFilter extends AbstractFilter
                 'price' => $this->extractProductField($product, 'price'),
                 'price_tax_exc' => $this->extractProductField($product, 'price'),
                 'allow_oosp' => $allow_oosp,
-                'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id)
+                'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id),
+                'price_without_reduction' => Product::getPriceStatic(
+                    $product['_id'],
+                    Product::$_taxCalculationMethod == PS_TAX_EXC ? false : true,
+                    null,
+                    Product::$_taxCalculationMethod == PS_TAX_EXC ? 2 : 6,
+                    null,
+                    false,
+                    false
+                ),
             );
         }
 
@@ -371,116 +380,118 @@ class ElasticSearchFilter extends AbstractFilter
         $price_counter = 0;
         $weight_counter = 0;
 
-        foreach ($selected_filters as $key => $filter_values) {
-            if (!count($filter_values)) {
-                continue;
-            }
+        if ($selected_filters) {
+            foreach ($selected_filters as $key => $filter_values) {
+                if (!count($filter_values)) {
+                    continue;
+                }
 
-            preg_match('/^(.*[^_0-9])/', $key, $res);
-            $key = $res[1];
+                preg_match('/^(.*[^_0-9])/', $key, $res);
+                $key = $res[1];
 
-            if (in_array($key, $exclude)) {
-                continue;
-            }
+                if (in_array($key, $exclude)) {
+                    continue;
+                }
 
-            foreach ($filter_values as $value) {
-                switch ($key) {
-                    case 'id_feature':
-                        $parts = explode('_', $value);
+                foreach ($filter_values as $value) {
+                    switch ($key) {
+                        case 'id_feature':
+                            $parts = explode('_', $value);
 
-                        if (count($parts) != 2) {
+                            if (count($parts) != 2) {
+                                break;
+                            }
+
+                            $search_values['id_feature'][] = array(
+                                'term' => array(
+                                    'feature_'.$parts[0] => $parts[1]
+                                )
+                            );
                             break;
-                        }
 
-                        $search_values['id_feature'][] = array(
-                            'term' => array(
-                                'feature_'.$parts[0] => $parts[1]
-                            )
-                        );
-                        break;
+                        case 'id_attribute_group':
+                            $parts = explode('_', $value);
 
-                    case 'id_attribute_group':
-                        $parts = explode('_', $value);
+                            if (count($parts) != 2) {
+                                break;
+                            }
 
-                        if (count($parts) != 2) {
+                            $search_values['id_attribute_group'][] = array(
+                                'term' => array(
+                                    'attribute_group_'.$parts[0] => $parts[1]
+                                )
+                            );
                             break;
-                        }
 
-                        $search_values['id_attribute_group'][] = array(
-                            'term' => array(
-                                'attribute_group_'.$parts[0] => $parts[1]
-                            )
-                        );
-                        break;
-
-                    case 'category':
-                        $search_values['categories'][] = array(
-                            'term' => array(
-                                'categories' => $value
-                            )
-                        );
-                        break;
-
-                    case 'quantity':
-                        //If in_stock was already processed it means
-                        // that both "In stock" and "Not available" values are selected in filter
-                        //in this case we do not need to add quantity filter at all -
-                        // need to remove previously set filter.
-                        if (isset($search_values['in_stock'])) {
-                            unset($search_values['in_stock']);
+                        case 'category':
+                            $search_values['categories'][] = array(
+                                'term' => array(
+                                    'categories' => $value
+                                )
+                            );
                             break;
-                        }
 
-                        //if stock management is disabled all products are available
-                        if (!Configuration::get('PS_STOCK_MANAGEMENT')) {
+                        case 'quantity':
+                            //If in_stock was already processed it means
+                            // that both "In stock" and "Not available" values are selected in filter
+                            //in this case we do not need to add quantity filter at all -
+                            // need to remove previously set filter.
+                            if (isset($search_values['in_stock'])) {
+                                unset($search_values['in_stock']);
+                                break;
+                            }
+
+                            //if stock management is disabled all products are available
+                            if (!Configuration::get('PS_STOCK_MANAGEMENT')) {
+                                break;
+                            }
+
+                            $global_oos_deny_orders = !Configuration::get('PS_ORDER_OUT_OF_STOCK');
+
+                            $search_values['in_stock'][] = array(
+                                'term' => array(
+                                    'in_stock_when_global_oos_'.($global_oos_deny_orders ? 'deny' : 'allow').'_orders' => $value
+                                )
+                            );
+
                             break;
-                        }
 
-                        $global_oos_deny_orders = !Configuration::get('PS_ORDER_OUT_OF_STOCK');
+                        case 'manufacturer':
+                            $search_values['manufacturer'][] = array(
+                                'term' => array(
+                                    'id_manufacturer' => $value
+                                )
+                            );
+                            break;
 
-                        $search_values['in_stock'][] = array(
-                            'term' => array(
-                                'in_stock_when_global_oos_'.($global_oos_deny_orders ? 'deny' : 'allow').'_orders' => $value
-                            )
-                        );
+                        case 'condition':
+                            $search_values['condition'][] = array(
+                                'term' => array(
+                                    'condition' => $value
+                                )
+                            );
+                            break;
 
-                        break;
+                        case 'weight':
+                            if ($weight_counter == 0) {
+                                $search_values['weight']['gte'] = $value;
+                            } elseif ($weight_counter == 1) {
+                                $search_values['weight']['lte'] = $value;
+                            }
 
-                    case 'manufacturer':
-                        $search_values['manufacturer'][] = array(
-                            'term' => array(
-                                'id_manufacturer' => $value
-                            )
-                        );
-                        break;
+                            $weight_counter++;
+                            break;
 
-                    case 'condition':
-                        $search_values['condition'][] = array(
-                            'term' => array(
-                                'condition' => $value
-                            )
-                        );
-                        break;
+                        case 'price':
+                            if ($price_counter == 0) {
+                                $search_values['price']['gte'] = (int)$value;
+                            } elseif ($price_counter == 1) {
+                                $search_values['price']['lte'] = ceil($value);
+                            }
 
-                    case 'weight':
-                        if ($weight_counter == 0) {
-                            $search_values['weight']['gte'] = $value;
-                        } elseif ($weight_counter == 1) {
-                            $search_values['weight']['lte'] = $value;
-                        }
-
-                        $weight_counter++;
-                        break;
-
-                    case 'price':
-                        if ($price_counter == 0) {
-                            $search_values['price']['gte'] = (int)$value;
-                        } elseif ($price_counter == 1) {
-                            $search_values['price']['lte'] = ceil($value);
-                        }
-
-                        $price_counter++;
-                        break;
+                            $price_counter++;
+                            break;
+                    }
                 }
             }
         }

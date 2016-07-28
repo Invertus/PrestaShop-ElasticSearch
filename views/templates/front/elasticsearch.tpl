@@ -24,7 +24,7 @@
 	{if $search_value && $products}
         <span class="lighter">"{$search_value|escape:'htmlall':'UTF-8'}"</span>
         {if !isset($no_pagination)}
-            <span class="heading-counter">{l s='%d results have been found.' sprintf=$products|count mod='elasticsearch'}</span>
+            <span class="heading-counter">{l s='%d results have been found.' sprintf=$nbr_products|intval mod='elasticsearch'}</span>
         {/if}
     {/if}
     {if isset($no_pagination)}

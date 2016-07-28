@@ -44,6 +44,7 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
                 '&'.http_build_query(array('search' => $query)));
 
         $products = $this->getSearchProducts();
+        $nbrProducts = $this->getSearchProducts(true);
 
         $this->context->smarty->assign(array(
             'products' => $products,
@@ -52,11 +53,12 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
             'request' => $this->context->link->getModuleLink('elasticsearch', 'elasticsearch', array('id_elasticsearch' => 1)).'&'.
                 http_build_query(array('search' => Tools::getValue('search'))),
             'current_url' => $this->context->link->getModuleLink('elasticsearch', 'elasticsearch', array('id_elasticsearch' => 1)).'&'.
-                http_build_query(array('search' => Tools::getValue('search')))
+                http_build_query(array('search' => Tools::getValue('search'))),
+            'nbr_products' => $nbrProducts,
         ));
 
         $this->productSort();
-        $this->pagination(count($this->getSearchProducts(true)));
+        $this->pagination($nbrProducts);
     }
 
     public function setMedia()
@@ -100,8 +102,9 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
         if (isset($this->context->cookie->nb_item_per_page) && in_array($this->context->cookie->nb_item_per_page, $n_array))
             $this->n = (int)$this->context->cookie->nb_item_per_page;
 
-        if ((int)Tools::getValue('n') && in_array((int)Tools::getValue('n'), $n_array))
+        if ((int)Tools::getValue('n')) {
             $this->n = (int)Tools::getValue('n');
+        }
 
         $this->p = (int)Tools::getValue('p', 1);
 
@@ -120,7 +123,7 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
         $search = $this->module_instance->getSearchServiceObject();
         $query = $search->buildSearchQuery($property, $search_value);
 
-        $from = $no_filter ? null : (int)$this->p - 1;
+        $from = $no_filter ? null : ((int)$this->p - 1) * (int)$this->n;
         $pagination = $no_filter ? null : (int)$this->n;
 
         $result = $search->search($type, $query, $pagination, $from, $order_by, $order_way);

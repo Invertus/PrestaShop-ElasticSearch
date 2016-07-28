@@ -835,6 +835,10 @@ class ElasticSearch extends Module
             if (!Configuration::get('ELASTICSEARCH_DISPLAY_FILTER'))
                 return '';
 
+            if ($this->context->controller instanceof ElasticSearchElasticSearchModuleFrontController) {
+                return '';
+            }
+
             $this->context->controller->addCSS(_ELASTICSEARCH_CSS_URI_.$this->name.'.css');
             $this->context->controller->addJS(_ELASTICSEARCH_JS_URI_.'filter.js');
             $this->context->controller->addJS(_PS_JS_DIR_.'jquery/jquery-ui-1.8.10.custom.min.js');
