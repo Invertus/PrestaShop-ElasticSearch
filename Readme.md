@@ -12,6 +12,8 @@ ___
 
 * ##### Module installation
 
+    * Extract downloaded module's zip and make sure the folder is called "elasticsearch" (you will have to rename it)
+    * Compress the renamed folder into a zip archive (any name)
     * Log in to your shop's back-office
     * Navigate to "Modules" tab
     * Click "Add a new module"
