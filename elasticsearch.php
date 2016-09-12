@@ -120,7 +120,7 @@ class ElasticSearch extends Module
             'ELASTICSEARCH_SEARCH_COUNT' => '10',
             'ELASTICSEARCH_SEARCH_MIN' => '3',
             'ELASTICSEARCH_AJAX_SEARCH' => '1',
-            'ELASTICSEARCH_HOST' => 'example.com:9200',
+            'ELASTICSEARCH_HOST' => 'localhost:9200',
             'ELASTICSEARCH_SEARCH_DISPLAY' => '1',
             'ELASTICSEARCH_DISPLAY_FILTER' => '1',
             'ELASTICSEARCH_HIDE_0_VALUES' => '0',
