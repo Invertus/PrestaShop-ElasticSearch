@@ -1,3 +1,5 @@
 config.xml
 vendor/
 .idea
+log/
+!log/index.php
