@@ -23,6 +23,7 @@ if (!defined('_PS_VERSION_'))
 require_once('elasticsearch.config.php');
 require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchTemplate.php');
 require_once(_ELASTICSEARCH_CORE_DIR_.'SearchService.php');
+require_once(_ELASTICSEARCH_CLASSES_DIR_.'ElasticSearchFilter.php');
 
 class ElasticSearch extends Module
 {

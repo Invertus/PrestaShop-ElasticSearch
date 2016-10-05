@@ -134,31 +134,30 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
         $search_result = array();
 
         if (isset($result))
-            foreach ($result as $product)
-            {
-                $product_obj = new Product($product['_id'], true, (int)$this->context->language->id);
+            $global_allow_oosp = (int)Configuration::get('PS_ORDER_OUT_OF_STOCK');
 
-                if (!Validate::isLoadedObject($product_obj))
-                    continue;
+            foreach ($result as $product)  {
 
-                $product_obj->link = $this->context->link->getProductLink($product_obj, null, $product_obj->category);
-                $image = Product::getCover((int)$product_obj->id);
-                $product_obj->id_image = isset($image['id_image']) ? (int)$image['id_image'] : 0;
-                $product_obj->price_tax_exc = $product_obj->price;
-                $product_obj->allow_oosp = false;
-                $product_obj->id_product = (int)$product_obj->id;
-                $product_obj->id_product_attribute = $product_obj->getAttributeCombinations((int)$this->context->language->id);
-                $product_obj->price_without_reduction = Product::getPriceStatic(
-                    $product_obj->id,
-                    Product::$_taxCalculationMethod == PS_TAX_EXC ? false : true,
-                    null,
-                    Product::$_taxCalculationMethod == PS_TAX_EXC ? 2 : 6,
-                    null,
-                    false,
-                    false
-                );
+                $row = array();
+                $row['id_product'] = $product['_id'];
+                $row['out_of_stock'] = $product['_source']['out_of_stock'];
+                $row['id_category_default'] = $product['_source']['id_category_default'];
+                $row['ean13'] = $product['_source']['ean13'];
+                $row['link_rewrite'] = $product['_source']['link_rewrite_'.$this->context->language->id];
 
-                $search_result[] = (array)$product_obj;
+                $allow_oosp = $row['out_of_stock'] == AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS ||
+                    $row['out_of_stock'] == AbstractFilter::PRODUCT_OOS_USE_GLOBAL && $global_allow_oosp;
+
+                $row['allow_oosp'] = $allow_oosp;
+
+                $product_properties = Product::getProductProperties($this->context->language->id, $row);
+
+                $product_properties = array_merge($product_properties, $product['_source']);
+                $product_properties['name'] = $product['_source']['name_'.$this->context->language->id];
+                $product_properties['description_short'] =
+                    $product['_source']['description_short_'.$this->context->language->id];
+
+                $search_result[] = $product_properties;
             }
 
         $this->addColorsToProductList($search_result);
