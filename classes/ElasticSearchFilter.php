@@ -305,48 +305,37 @@ class ElasticSearchFilter extends AbstractFilter
         $products_data = array();
 
         $global_allow_oosp = (int)Configuration::get('PS_ORDER_OUT_OF_STOCK');
+        $context = Context::getContext();
 
         foreach ($products as $product) {
-            $allow_oosp = $this->extractProductField($product, 'out_of_stock');
-            $allow_oosp =
-                $allow_oosp == AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS ||
-                ($allow_oosp == AbstractFilter::PRODUCT_OOS_USE_GLOBAL && $global_allow_oosp);
 
-            $products_data[] = array(
-                'id_product' => $product['_id'],
-                'out_of_stock' => $this->extractProductField($product, 'out_of_stock'),
-                'id_category_default' => $this->extractProductField($product, 'id_category_default'),
-                'link_rewrite' => $this->extractProductField(
-                    $product,
-                    'link_rewrite_'.Context::getContext()->language->id
-                ),
-                'name' => $this->extractProductField($product, 'name_'.Context::getContext()->language->id),
-                'description_short' => $this->extractProductField(
-                    $product,
-                    'description_short_'.Context::getContext()->language->id
-                ),
-                'ean13' => $this->extractProductField($product, 'ean13'),
-                'id_image' => $this->extractProductField($product, 'id_image'),
-                'customizable' => $this->extractProductField($product, 'customizable'),
-                'minimal_quantity' => $this->extractProductField($product, 'minimal_quantity'),
-                'available_for_order' => $this->extractProductField($product, 'available_for_order'),
-                'show_price' => $this->extractProductField($product, 'show_price'),
-                'quantity' => $this->extractProductField($product, 'quantity'),
-                'id_product_attribute' => $this->extractProductField($product, 'id_combination_default'),
-                'price' => $this->extractProductField($product, 'price'),
-                'price_tax_exc' => $this->extractProductField($product, 'price'),
-                'allow_oosp' => $allow_oosp,
-                'link' => $this->extractProductField($product, 'link_'.Context::getContext()->language->id),
-                'price_without_reduction' => Product::getPriceStatic(
-                    $product['_id'],
-                    Product::$_taxCalculationMethod == PS_TAX_EXC ? false : true,
-                    null,
-                    Product::$_taxCalculationMethod == PS_TAX_EXC ? 2 : 6,
-                    null,
-                    false,
-                    false
-                ),
-            );
+            $row = array();
+            $row['id_product'] = $product['_id'];
+            $row['out_of_stock'] = $product['_source']['out_of_stock'];
+            $row['id_category_default'] = $product['_source']['id_category_default'];
+            $row['ean13'] = $product['_source']['ean13'];
+            $row['link_rewrite'] = $product['_source']['link_rewrite_'.$context->language->id];
+
+            $allow_oosp =
+                $row['out_of_stock'] == AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS ||
+                ($row['out_of_stock'] == AbstractFilter::PRODUCT_OOS_USE_GLOBAL && $global_allow_oosp);
+
+            $row['allow_oosp'] = $allow_oosp;
+
+            $product_properties = Product::getProductProperties($context->language->id, $row);
+
+            foreach ($product['_source'] as $key => $value) {
+                if (!array_key_exists($key, $product_properties)) {
+                    $product_properties[$key] = $value;
+                }
+            }
+
+            $product_properties['name'] = $product['_source']['name_'.$context->language->id];
+            $product_properties['description_short'] = $product['_source']['description_short_'.$context->language->id];
+            $product_properties['on_sale'] = isset($product_properties['on_sale']) ?: false;
+
+            $products_data[] = $product_properties;
+
         }
 
         return $products_data;
