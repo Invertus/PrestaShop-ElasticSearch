@@ -189,7 +189,7 @@ class ElasticSearchFilter extends AbstractFilter
                             'aggregation_type' => 'terms',
                             'field' => 'attribute_group_'.$value['id_value'],
                             'alias' => 'attribute_group_'.$value['id_value'],
-                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type, $value['id_value'])
                         );
                     }
                     break;
@@ -199,7 +199,7 @@ class ElasticSearchFilter extends AbstractFilter
                             'aggregation_type' => 'terms',
                             'field' => 'feature_'.$value['id_value'],
                             'alias' => 'feature_'.$value['id_value'],
-                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type)
+                            'filter' => $this->getProductsQueryByFilters($selected_filters, $type, $value['id_value'])
                         );
                     }
                     break;
@@ -357,9 +357,10 @@ class ElasticSearchFilter extends AbstractFilter
     /**
      * @param $selected_filters
      * @param array|string $exclude - exclude these filters from query
+     * @param null $exclude_id
      * @return array
      */
-    public function getProductsQueryByFilters($selected_filters, $exclude = array())
+    public function getProductsQueryByFilters($selected_filters, $exclude = array(), $exclude_id = null)
     {
         $query = array();
         $search_values = array();
@@ -380,8 +381,14 @@ class ElasticSearchFilter extends AbstractFilter
                 preg_match('/^(.*[^_0-9])/', $key, $res);
                 $key = $res[1];
 
-                if (in_array($key, $exclude)) {
+                if (in_array($key, $exclude) && is_null($exclude_id)) {
                     continue;
+                } elseif ($exclude_id) {
+                    foreach ($filter_values as $filter_key => $filter_value) {
+                        if (0 === strpos($filter_value, $exclude_id)) {
+                             unset($filter_values[$filter_key]);
+                        }
+                    }
                 }
 
                 foreach ($filter_values as $value) {
