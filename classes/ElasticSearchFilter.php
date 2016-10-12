@@ -285,7 +285,10 @@ class ElasticSearchFilter extends AbstractFilter
             'show_price',
             'price',
             'quantity',
-            'id_combination_default'
+            'id_combination_default',
+            'online_only',
+            'quantity_all_versions',
+            'is_virtual',
         );
 
         $partial_fields = $this->getPartialFields($required_fields);
@@ -332,7 +335,6 @@ class ElasticSearchFilter extends AbstractFilter
 
             $product_properties['name'] = $product['_source']['name_'.$context->language->id];
             $product_properties['description_short'] = $product['_source']['description_short_'.$context->language->id];
-            $product_properties['on_sale'] = isset($product_properties['on_sale']) ?: false;
 
             $products_data[] = $product_properties;
 
