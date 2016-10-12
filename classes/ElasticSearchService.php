@@ -132,6 +132,8 @@ class ElasticSearchService extends SearchService
         $body['minimal_quantity'] = $product->minimal_quantity;
         $body['show_price'] = $product->show_price;
         $body['id_combination_default'] = Product::getDefaultAttribute($product->id);
+        $body['is_virtual'] = $product->is_virtual;
+        $body['on_sale'] = $product->on_sale;
 
         //is product in stock when "PS_ORDER_OUT_OF_STOCK" is true
         $body['in_stock_when_global_oos_allow_orders'] = (int)($product->quantity > 0 || $product->out_of_stock != 0);
