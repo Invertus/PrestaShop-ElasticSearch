@@ -140,6 +140,7 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
 
                 $row = array();
                 $row['id_product'] = $product['_id'];
+                $row['id_image'] = $product['_source']['id_image'];
                 $row['out_of_stock'] = $product['_source']['out_of_stock'];
                 $row['id_category_default'] = $product['_source']['id_category_default'];
                 $row['ean13'] = $product['_source']['ean13'];
