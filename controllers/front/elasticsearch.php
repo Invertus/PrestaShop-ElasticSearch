@@ -152,7 +152,12 @@ class ElasticSearchElasticSearchModuleFrontController extends FrontController
 
                 $product_properties = Product::getProductProperties($this->context->language->id, $row);
 
-                $product_properties = array_merge($product_properties, $product['_source']);
+                foreach ($product['_source'] as $key => $value) {
+                    if (!array_key_exists($key, $product_properties)) {
+                        $product_properties[$key] = $value;
+                    }
+                }
+
                 $product_properties['name'] = $product['_source']['name_'.$this->context->language->id];
                 $product_properties['description_short'] =
                     $product['_source']['description_short_'.$this->context->language->id];
