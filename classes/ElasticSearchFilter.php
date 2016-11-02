@@ -318,6 +318,7 @@ class ElasticSearchFilter extends AbstractFilter
             $row['id_category_default'] = $product['_source']['id_category_default'];
             $row['ean13'] = $product['_source']['ean13'];
             $row['link_rewrite'] = $product['_source']['link_rewrite_'.$context->language->id];
+            $row['id_image'] = $product['_source']['id_image'];
 
             $allow_oosp =
                 $row['out_of_stock'] == AbstractFilter::PRODUCT_OOS_ALLOW_ORDERS ||
