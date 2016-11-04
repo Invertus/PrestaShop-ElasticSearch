@@ -1,3 +1,8 @@
+# DEPRECATED
+
+Meet new [BRAD](https://github.com/Invertus/brad)
+-------------------------------------------------
+
 ## ![-](logo.png "BRAD") BRAD
 
 [![Join the chat at https://gitter.im/DonatasL/PrestaShop-ElasticSearch](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/DonatasL/PrestaShop-ElasticSearch?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
